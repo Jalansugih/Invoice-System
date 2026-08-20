@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color-scheme: light;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'tnum' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    background-color: #F8FAFC;
+    color: #1E293B;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .dark body {
+    background-color: #0B0F19;
+    color: #F1F5F9;
+  }
+
+  /* Data-heavy table typography adjustments */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  thead th {
+    letter-spacing: 0.06em;
+    font-weight: 700;
+  }
+
+  tbody td {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Universal class for numeric financial figures & codes */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* =========================================================
+   STRICT DOCUMENT PRINT ENGINE (@media print)
+   Ensures ONLY the document is printed, hiding all UI/screen chrome
+   ========================================================= */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm 10mm 12mm;
+  }
+
+  /* Reset body and html for physical paper printing */
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 11pt !important;
+    line-height: 1.4 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Force dark mode overrides back to pure paper white */
+  .dark body,
+  .dark {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  /* Hide entire UI app layout: sidebar, navbar, mobile bars, search modal, action buttons, footers */
+  aside,
+  nav,
+  header,
+  .sidebar,
+  .navbar,
+  .print\:hidden,
+  .no-print,
+  button,
+  input,
+  select,
+  .fixed,
+  #global-search-modal,
+  [role="dialog"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Flatten root container and main scrollable areas */
+  #root,
+  #root > div,
+  main,
+  main > div {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Isolate printable document container */
+  #printable-invoice,
+  #printable-letter,
+  #printable-receipt,
+  .printable-document {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-radius: 0 !important;
+    visibility: visible !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Ensure child elements inside printable document are visible and sharp */
+  #printable-invoice *,
+  #printable-letter *,
+  #printable-receipt *,
+  .printable-document * {
+    visibility: visible !important;
+    color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Prevent awkward page breaks in critical document sections */
+  .avoid-page-break,
+  table,
+  tr,
+  td,
+  th,
+  .signature-block,
+  .bank-instruction-block,
+  .totals-block {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Table borders high-contrast for paper */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  /* Remove all shadows and rounded corners on print */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}
+

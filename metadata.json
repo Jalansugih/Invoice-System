@@ -1,0 +1,8 @@
+{
+  "name": "Remix BillingFlow",
+  "description": "Aplikasi Invoice \u0026 Document Billing Management profesional untuk mengelola invoice, faktur, surat tagihan, pembayaran, pelanggan, dan laporan keuangan perusahaan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
