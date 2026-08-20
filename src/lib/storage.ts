@@ -78,7 +78,7 @@ export const initialUser: UserProfile = {
   name: 'Anas Abdullatif',
   email: 'hallo@binausaha.com',
   role: 'owner',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  avatarUrl: '/foto-conak.jpg',
   organizationId: 'org-001',
 };
 
