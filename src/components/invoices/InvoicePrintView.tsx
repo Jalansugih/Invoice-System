@@ -336,7 +336,7 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
 
             <div>
               <p className="text-xs font-bold text-slate-900 underline uppercase">
-                {org.directorName || 'Finance & Accounting Manager'}
+                {org.directorName || 'Anas Abdul Latif, S.Pd., SE., M.M.'}
               </p>
               <p className="text-[10px] text-slate-500">Finance & Billing Department</p>
             </div>
