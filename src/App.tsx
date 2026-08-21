@@ -21,6 +21,8 @@ import { BillingLetterPrintView } from './components/letters/BillingLetterPrintV
 import { PaymentList } from './components/payments/PaymentList';
 import { PaymentModal } from './components/payments/PaymentModal';
 import { ReceiptPrintView } from './components/payments/ReceiptPrintView';
+import { BankReconciliationView } from './components/reconciliation/BankReconciliationView';
+import { TaxReportsView } from './components/tax/TaxReportsView';
 import { DocumentHub } from './components/documents/DocumentHub';
 import { FinancialReportsView } from './components/reports/FinancialReportsView';
 import { AuditTrailView } from './components/audit/AuditTrailView';
@@ -246,6 +248,29 @@ export default function App() {
                   <PaymentList
                     onViewReceipt={(p) => setViewingReceiptPayment(p)}
                     onCreateNewPayment={() => handleQuickAction('new_payment')}
+                    onNavigateReconciliation={() => setCurrentTab('reconciliation')}
+                  />
+                )}
+
+                {currentTab === 'reconciliation' && (
+                  <BankReconciliationView
+                    onViewInvoice={(id) => {
+                      setCurrentTab('invoices');
+                      setViewingInvoiceId(id);
+                    }}
+                    onViewReceipt={(p) => {
+                      setCurrentTab('payments');
+                      setViewingReceiptPayment(p);
+                    }}
+                  />
+                )}
+
+                {currentTab === 'tax_reports' && (
+                  <TaxReportsView
+                    onViewSourceInvoice={(id) => {
+                      setCurrentTab('invoices');
+                      setViewingInvoiceId(id);
+                    }}
                   />
                 )}
 

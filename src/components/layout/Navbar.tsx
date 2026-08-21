@@ -51,6 +51,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     invoices: 'Invoice & Billing Management',
     billing_letters: 'Billing & Overdue Letters',
     payments: 'Payment Receipts',
+    reconciliation: 'Bank Reconciliation & Feed',
+    tax_reports: 'Laporan Pajak Perusahaan',
     documents: 'Document Archive Hub',
     reports: 'Financial & Aging Reports',
     audit: 'System Audit Trail',

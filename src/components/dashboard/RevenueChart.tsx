@@ -1,17 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
 } from 'recharts';
 import { Invoice, Payment } from '../../types';
 import { formatRupiah } from '../../lib/utils';
-import { Calendar, TrendingUp } from 'lucide-react';
+import { Calendar, TrendingUp, Sparkles } from 'lucide-react';
 
 export type RevenuePeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -22,6 +22,7 @@ export interface RevenueChartProps {
 
 export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }) => {
   const [period, setPeriod] = useState<RevenuePeriod>('monthly');
+  const [chartType, setChartType] = useState<'area' | 'line'>('area');
 
   // Generate chart data dynamically based on the selected period
   const chartData = useMemo(() => {
@@ -233,29 +234,36 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
       const rate = invVal > 0 ? ((colVal / invVal) * 100).toFixed(1) : '0';
 
       return (
-        <div className="rounded-xl border border-slate-700 bg-slate-900/95 backdrop-blur-xs text-white p-3 shadow-xl text-xs min-w-[200px]">
-          <div className="flex items-center gap-1.5 font-bold text-slate-100 mb-2 border-b border-slate-800 pb-1.5">
-            <Calendar className="w-3.5 h-3.5 text-blue-400" />
-            <span>{data?.fullDate || label}</span>
+        <div className="rounded-xl border border-slate-700 bg-slate-900/95 backdrop-blur-md text-white p-3.5 shadow-2xl text-xs min-w-[220px] animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between font-bold text-slate-100 mb-2.5 border-b border-slate-800 pb-2">
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-blue-400" />
+              <span>{data?.fullDate || label}</span>
+            </div>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+              {rate}% Terkoleksi
+            </span>
           </div>
-          <div className="space-y-1.5 text-slate-300">
+          <div className="space-y-2 text-slate-300">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-xs shadow-blue-500/50" />
                 <span>Tagihan (Faktur):</span>
               </span>
-              <span className="font-bold text-white ml-2">{formatRupiah(invVal)}</span>
+              <span className="font-bold text-white font-mono">{formatRupiah(invVal)}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>Penerimaan (Bayar):</span>
+              <span className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-xs shadow-emerald-400/50" />
+                <span>Penerimaan (Kas):</span>
               </span>
-              <span className="font-bold text-emerald-300 ml-2">{formatRupiah(colVal)}</span>
+              <span className="font-bold text-emerald-300 font-mono">{formatRupiah(colVal)}</span>
             </div>
-            <div className="flex items-center justify-between pt-1 border-t border-slate-800 text-[11px] text-slate-400">
-              <span>Realisasi Koleksi:</span>
-              <span className="font-semibold text-slate-200">{rate}%</span>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+              <span>Selisih Belum Bayar:</span>
+              <span className="font-semibold text-rose-300 font-mono">
+                {formatRupiah(Math.max(0, invVal - colVal))}
+              </span>
             </div>
           </div>
         </div>
@@ -265,83 +273,133 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 flex flex-col justify-between h-full">
-      {/* Header & Period Switcher Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+    <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between h-full overflow-hidden">
+      {/* Header & Controls */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
         <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold text-slate-800 text-base">Revenue Trend</h3>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              {period === 'daily' ? 'Harian' : period === 'weekly' ? 'Mingguan' : period === 'monthly' ? 'Bulanan' : 'Tahunan'}
-            </span>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-sm">Tren Pendapatan & Kas Masuk</h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                  {period === 'daily' ? 'Harian' : period === 'weekly' ? 'Mingguan' : period === 'monthly' ? 'Bulanan' : 'Tahunan'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">{periodDescriptions[period]}</p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">{periodDescriptions[period]}</p>
         </div>
 
-        {/* 4-Period Switcher Pill Tabs */}
-        <div className="inline-flex p-1 rounded-lg bg-slate-100 border border-slate-200 self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={() => setPeriod('daily')}
-            className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-all ${
-              period === 'daily'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            Harian
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod('weekly')}
-            className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-all ${
-              period === 'weekly'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            Mingguan
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod('monthly')}
-            className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-all ${
-              period === 'monthly'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            Bulanan
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod('yearly')}
-            className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-all ${
-              period === 'yearly'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            Tahunan
-          </button>
+        {/* Action Controls: Chart Style + Period Switcher */}
+        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+          {/* Chart Style Switcher */}
+          <div className="inline-flex p-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs">
+            <button
+              type="button"
+              onClick={() => setChartType('area')}
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                chartType === 'area'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Smooth Area
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartType('line')}
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                chartType === 'line'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Clean Line
+            </button>
+          </div>
+
+          {/* 4-Period Switcher Pill Tabs */}
+          <div className="inline-flex p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setPeriod('daily')}
+              className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
+                period === 'daily'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              Harian
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriod('weekly')}
+              className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
+                period === 'weekly'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              Mingguan
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriod('monthly')}
+              className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
+                period === 'monthly'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              Bulanan
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriod('yearly')}
+              className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
+                period === 'yearly'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              Tahunan
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Recharts Bar Chart Visualizer */}
-      <div className="h-52 w-full">
+      {/* Recharts Modern Line/Area Visualizer */}
+      <div className="h-60 w-full relative">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 12, right: 12, left: -8, bottom: 0 }}>
+            <defs>
+              {/* Gradient for Invoiced (Blue) */}
+              <linearGradient id="gradientInvoiced" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3B82F6" stopOpacity={chartType === 'area' ? 0.35 : 0.05} />
+                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+              </linearGradient>
+              {/* Gradient for Collected (Emerald) */}
+              <linearGradient id="gradientCollected" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10B981" stopOpacity={chartType === 'area' ? 0.4 : 0.05} />
+                <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
             <XAxis
               dataKey="name"
-              axisLine={false}
+              axisLine={{ stroke: '#E2E8F0' }}
               tickLine={false}
               tick={{ fill: '#64748B', fontSize: 11, fontWeight: 600 }}
+              dy={6}
             />
             <YAxis
               axisLine={false}
               tickLine={false}
-              tick={{ fill: '#94A3B8', fontSize: 10 }}
+              tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 500 }}
               tickFormatter={(v) => {
                 if (v === 0) return '0';
                 if (v >= 1000000000) return `Rp${(v / 1000000000).toFixed(1)}B`;
@@ -351,21 +409,45 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
               }}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Bar
+
+            {/* Invoiced Area & Line */}
+            <Area
+              type="monotone"
               dataKey="invoiced"
               name="Tagihan (Invoiced)"
-              radius={[4, 4, 0, 0]}
-              fill="#2563EB"
-              maxBarSize={period === 'daily' || period === 'weekly' ? 32 : 24}
+              stroke="#2563EB"
+              strokeWidth={3}
+              fillOpacity={1}
+              fill="url(#gradientInvoiced)"
+              activeDot={{
+                r: 6,
+                stroke: '#1D4ED8',
+                strokeWidth: 2,
+                fill: '#FFFFFF',
+                className: 'drop-shadow-md',
+              }}
+              dot={period === 'daily' || period === 'weekly' ? { r: 3.5, fill: '#2563EB', strokeWidth: 1, stroke: '#FFFFFF' } : false}
             />
-            <Bar
+
+            {/* Collected Area & Line */}
+            <Area
+              type="monotone"
               dataKey="collected"
               name="Penerimaan (Collected)"
-              radius={[4, 4, 0, 0]}
-              fill="#10B981"
-              maxBarSize={period === 'daily' || period === 'weekly' ? 32 : 24}
+              stroke="#10B981"
+              strokeWidth={3}
+              fillOpacity={1}
+              fill="url(#gradientCollected)"
+              activeDot={{
+                r: 6,
+                stroke: '#047857',
+                strokeWidth: 2,
+                fill: '#FFFFFF',
+                className: 'drop-shadow-md',
+              }}
+              dot={period === 'daily' || period === 'weekly' ? { r: 3.5, fill: '#10B981', strokeWidth: 1, stroke: '#FFFFFF' } : false}
             />
-          </BarChart>
+          </AreaChart>
         </ResponsiveContainer>
       </div>
 
@@ -373,27 +455,29 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 mt-2 border-t border-slate-100 text-xs">
         {/* Legend */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-blue-600 shrink-0" />
-            <span className="text-slate-600 font-medium">Tagihan Diterbitkan</span>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-1 rounded-full bg-blue-600 shrink-0" />
+            <span className="text-slate-700 font-medium">Tagihan Diterbitkan</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 shrink-0" />
-            <span className="text-slate-600 font-medium">Realisasi Pembayaran</span>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-1 rounded-full bg-emerald-500 shrink-0" />
+            <span className="text-slate-700 font-medium">Realisasi Penerimaan</span>
           </div>
         </div>
 
-        {/* Aggregate Stats */}
-        <div className="flex items-center gap-4 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 font-mono text-xs">
+        {/* Aggregate Stats Badges */}
+        <div className="flex items-center gap-3 bg-slate-50/80 px-3 py-1.5 rounded-xl border border-slate-100 font-mono text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-500 font-sans">Total Tagihan:</span>
+            <span className="text-slate-500 font-sans">Tagihan:</span>
             <span className="font-bold text-blue-700">{formatRupiah(totalInvoiced)}</span>
           </div>
-          <div className="hidden md:block text-slate-300">|</div>
+          <div className="text-slate-300">/</div>
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-500 font-sans">Realisasi:</span>
+            <span className="text-slate-500 font-sans">Masuk:</span>
             <span className="font-bold text-emerald-700">{formatRupiah(totalCollected)}</span>
-            <span className="text-[10px] font-sans font-semibold text-slate-500">({collectionRate}%)</span>
+            <span className="text-[10px] font-sans font-semibold text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded">
+              {collectionRate}%
+            </span>
           </div>
         </div>
       </div>

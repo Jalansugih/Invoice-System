@@ -131,8 +131,8 @@ export const AgingReceivablesChart: React.FC<AgingReceivablesChartProps> = ({ ag
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 flex flex-col justify-between h-full">
-      {/* Header with Title and Overdue Status Pill */}
+    <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between h-full">
+      {/* Header with Title and Overdue Status */}
       <div>
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
@@ -140,20 +140,20 @@ export const AgingReceivablesChart: React.FC<AgingReceivablesChartProps> = ({ ag
               <Clock className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-800 leading-tight">Aging Receivables</h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">Struktur umur piutang usaha</p>
+              <h3 className="text-sm font-bold text-slate-900 leading-tight">Analisis Umur Piutang</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Distribusi portofolio piutang usaha (Aging)</p>
             </div>
           </div>
 
           {totalOverdueCount > 0 ? (
-            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold tracking-tight shrink-0 shadow-2xs">
-              <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />
+            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold shrink-0 font-mono">
+              <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
               <span>{totalOverdueCount} Overdue</span>
             </div>
           ) : (
-            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold tracking-tight shrink-0 shadow-2xs">
-              <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-              <span>Lancar</span>
+            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold shrink-0">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span>Portofolio Sehat</span>
             </div>
           )}
         </div>

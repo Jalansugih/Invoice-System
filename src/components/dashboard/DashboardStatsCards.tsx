@@ -8,8 +8,9 @@ import {
   Clock,
   ArrowUpRight,
   ArrowDownRight,
-  FileText,
+  Receipt,
   CheckCircle2,
+  ShieldAlert,
 } from 'lucide-react';
 
 export interface DashboardStatsCardsProps {
@@ -21,131 +22,152 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({ stats,
   const totalReceivables = stats.totalOutstandingReceivables || stats.totalInvoicedAmount;
   const unpaidTotal = stats.unpaidAmount + stats.overdueAmount;
   const monthRevenue = stats.monthRevenueAmount || stats.totalInvoicedAmount;
+  const overduePercent =
+    totalReceivables > 0 ? ((stats.overdueAmount / totalReceivables) * 100).toFixed(0) : '0';
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-      {/* 1. Total Outstanding Receivables (Total Piutang Berjalan) */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 1. Total Outstanding Receivables */}
       <div
         id="stat-total-receivables"
         onClick={() => onNavigate('invoices')}
-        className="group relative bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs hover:border-blue-300 hover:shadow-xs transition-all duration-200 cursor-pointer flex flex-col justify-between"
+        className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Total Piutang Berjalan
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Total Piutang Usaha
             </span>
+            <span className="text-[11px] font-semibold text-slate-400 font-mono">
+              {stats.unpaidCount + stats.overdueCount} Faktur
+            </span>
+          </div>
+
+          <div className="space-y-1">
             <p
-              className="text-xl xl:text-2xl font-black text-slate-900 tabular-nums tracking-tight font-mono"
+              className="text-2xl font-bold text-slate-900 font-mono tracking-tight tabular-nums truncate"
               title={formatRupiah(totalReceivables)}
             >
               {formatRupiah(totalReceivables)}
             </p>
           </div>
-          <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors shrink-0">
-            <DollarSign className="w-5 h-5" />
-          </div>
         </div>
 
-        <div className="pt-3 mt-3 border-t border-slate-100/80 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1 text-emerald-600 font-semibold">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>+12.5% bln ini</span>
-          </div>
-          <span className="text-slate-400 font-medium">{stats.unpaidCount + stats.overdueCount} Faktur Aktif</span>
-        </div>
-      </div>
-
-      {/* 2. Overdue / Unpaid Invoices (Tagihan Tertunggak) */}
-      <div
-        id="stat-unpaid-invoices"
-        onClick={() => onNavigate('invoices')}
-        className="group relative bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs hover:border-rose-300 hover:shadow-xs transition-all duration-200 cursor-pointer flex flex-col justify-between"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Tagihan Tertunggak
+        <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1.5 text-slate-600">
+            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+            <span>Lancar:</span>
+            <span className="font-semibold font-mono text-slate-800 tabular-nums">
+              {formatRupiah(stats.unpaidAmount)}
             </span>
-            <p
-              className="text-xl xl:text-2xl font-black text-rose-600 tabular-nums tracking-tight font-mono"
-              title={formatRupiah(unpaidTotal)}
-            >
-              {formatRupiah(unpaidTotal)}
-            </p>
           </div>
-          <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600 group-hover:bg-rose-600 group-hover:text-white transition-colors shrink-0">
-            <AlertCircle className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="pt-3 mt-3 border-t border-slate-100/80 flex items-center justify-between text-xs">
-          <span className="text-rose-600 font-semibold">
-            {stats.overdueCount > 0 ? `${stats.overdueCount} Lewat Jatuh Tempo` : 'Tidak Ada Tunggakan'}
-          </span>
-          <span className="text-slate-400 font-medium">Prioritas Tagih</span>
+          <span className="text-blue-600 font-semibold hover:underline">Rincian &rarr;</span>
         </div>
       </div>
 
-      {/* 3. Monthly Revenue Realized (Pendapatan Terbayar) */}
+      {/* 2. Kas Masuk / Realized Revenue */}
       <div
         id="stat-month-revenue"
         onClick={() => onNavigate('payments')}
-        className="group relative bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs hover:border-emerald-300 hover:shadow-xs transition-all duration-200 cursor-pointer flex flex-col justify-between"
+        className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Kas Masuk (Bulan Ini)
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Penerimaan Kas (Bln Ini)
             </span>
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
+              <ArrowUpRight className="w-3 h-3 text-emerald-600" />
+              +8.4% MoM
+            </span>
+          </div>
+
+          <div className="space-y-1">
             <p
-              className="text-xl xl:text-2xl font-black text-emerald-600 tabular-nums tracking-tight font-mono"
+              className="text-2xl font-bold text-slate-900 font-mono tracking-tight tabular-nums truncate"
               title={formatRupiah(monthRevenue)}
             >
               {formatRupiah(monthRevenue)}
             </p>
           </div>
-          <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
         </div>
 
-        <div className="pt-3 mt-3 border-t border-slate-100/80 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1 text-emerald-600 font-semibold">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>+4.2% MoM</span>
-          </div>
-          <span className="text-slate-400 font-medium">Realisasi Penerimaan</span>
+        <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+          <span className="text-slate-500">Tingkat Penagihan (CEI):</span>
+          <span className="font-bold text-emerald-700 font-mono">92.4%</span>
         </div>
       </div>
 
-      {/* 4. Collection Efficiency & DSO */}
+      {/* 3. Piutang Jatuh Tempo (Overdue) */}
       <div
-        id="stat-collection-period"
-        onClick={() => onNavigate('reports')}
-        className="group relative bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition-all duration-200 cursor-pointer flex flex-col justify-between"
+        id="stat-unpaid-invoices"
+        onClick={() => onNavigate('invoices')}
+        className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Rata-Rata Koleksi (DSO)
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Tagihan Lewat Tempo
             </span>
-            <p className="text-xl xl:text-2xl font-black text-slate-900 tabular-nums tracking-tight font-mono">
-              14 Hari
-            </p>
+            {stats.overdueCount > 0 ? (
+              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200/80">
+                {stats.overdueCount} Faktur Kritis
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
+                Semua Lancar
+              </span>
+            )}
           </div>
-          <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors shrink-0">
-            <Clock className="w-5 h-5" />
+
+          <div className="space-y-1">
+            <p
+              className="text-2xl font-bold text-rose-600 font-mono tracking-tight tabular-nums truncate"
+              title={formatRupiah(stats.overdueAmount)}
+            >
+              {formatRupiah(stats.overdueAmount)}
+            </p>
           </div>
         </div>
 
-        <div className="pt-3 mt-3 border-t border-slate-100/80 flex items-center justify-between text-xs">
-          <span className="text-blue-600 font-semibold">Target &lt; 15 Hari</span>
-          <span className="text-emerald-600 font-medium bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
-            Koleksi Sehat (91%)
-          </span>
+        <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+          <span className="text-slate-500">Rasio Risiko:</span>
+          <span className="font-bold text-rose-600 font-mono">{overduePercent}% Total AR</span>
+        </div>
+      </div>
+
+      {/* 4. DSO / Days Sales Outstanding */}
+      <div
+        id="stat-collection-period"
+        onClick={() => onNavigate('reports')}
+        className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between"
+      >
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Kecepatan Koleksi (DSO)
+            </span>
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+              Benchmark 30d
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold text-slate-900 font-mono tracking-tight tabular-nums">
+                14
+              </p>
+              <span className="text-xs font-semibold text-slate-500">Hari Kalender</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+          <span className="text-slate-500">Efisiensi Kas:</span>
+          <span className="font-bold text-blue-600">Sangat Cepat</span>
         </div>
       </div>
     </div>
   );
 };
+

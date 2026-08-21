@@ -295,6 +295,7 @@ export const BillingLetterList: React.FC<BillingLetterListProps> = ({
         cancelText="Batal"
         variant="danger"
         onConfirm={handleDeleteConfirm}
+        onClose={() => setLetterToDelete(null)}
         onCancel={() => setLetterToDelete(null)}
       />
     </div>

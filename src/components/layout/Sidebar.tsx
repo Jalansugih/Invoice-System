@@ -6,6 +6,7 @@ import {
   FileText,
   Mail,
   CreditCard,
+  Landmark,
   FolderOpen,
   BarChart3,
   Settings,
@@ -13,6 +14,10 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Building2,
+  ShieldCheck,
+  Receipt,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { StorageService } from '../../lib/storage';
 import { cn } from '../../lib/utils';
@@ -25,6 +30,17 @@ export interface SidebarProps {
   onToggleCollapse: () => void;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
+}
+
+interface NavGroup {
+  groupTitle?: string;
+  items: {
+    id: string;
+    label: string;
+    icon: React.ElementType;
+    badge?: string | number | null;
+    badgeVariant?: 'default' | 'danger' | 'success' | 'warning' | 'info';
+  }[];
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -41,68 +57,94 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const invoices = StorageService.getInvoices();
   const overdueCount = invoices.filter((i) => i.status === 'overdue').length;
 
-  const navItems = [
+  const navGroups: NavGroup[] = [
     {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icon: LayoutDashboard,
-      badge: null,
+      groupTitle: 'Operasional & Billing',
+      items: [
+        {
+          id: 'dashboard',
+          label: 'Dashboard Eksekutif',
+          icon: LayoutDashboard,
+        },
+        {
+          id: 'customers',
+          label: 'Data Pelanggan',
+          icon: Users,
+        },
+        {
+          id: 'products',
+          label: 'Produk & Jasa',
+          icon: Package,
+        },
+        {
+          id: 'invoices',
+          label: 'Faktur Penjualan',
+          icon: FileText,
+          badge: overdueCount > 0 ? overdueCount : null,
+          badgeVariant: 'danger',
+        },
+        {
+          id: 'billing_letters',
+          label: 'Surat Tagihan (SP)',
+          icon: Mail,
+        },
+      ],
     },
     {
-      id: 'customers',
-      label: 'Customers',
-      icon: Users,
-      badge: null,
+      groupTitle: 'Keuangan & Kas',
+      items: [
+        {
+          id: 'payments',
+          label: 'Penerimaan Kas',
+          icon: CreditCard,
+        },
+        {
+          id: 'reconciliation',
+          label: 'Rekonsiliasi Bank',
+          icon: Landmark,
+          badge: 'Bank Feed',
+          badgeVariant: 'success',
+        },
+        {
+          id: 'documents',
+          label: 'Arsip Dokumen',
+          icon: FolderOpen,
+        },
+      ],
     },
     {
-      id: 'products',
-      label: 'Products & Services',
-      icon: Package,
-      badge: null,
+      groupTitle: 'Pajak & Laporan',
+      items: [
+        {
+          id: 'tax_reports',
+          label: 'Laporan Pajak (DJP)',
+          icon: Receipt,
+          badge: 'PPh & PPN',
+          badgeVariant: 'info',
+        },
+        {
+          id: 'reports',
+          label: 'Laporan Keuangan',
+          icon: BarChart3,
+        },
+        {
+          id: 'audit',
+          label: 'Jejak Audit Sistem',
+          icon: History,
+        },
+      ],
     },
     {
-      id: 'invoices',
-      label: 'Invoices',
-      icon: FileText,
-      badge: overdueCount > 0 ? `${overdueCount}` : null,
-      badgeColor: 'bg-red-500/20 text-red-400 border border-red-500/30',
-    },
-    {
-      id: 'billing_letters',
-      label: 'Billing Letters',
-      icon: Mail,
-      badge: null,
-    },
-    {
-      id: 'payments',
-      label: 'Payments',
-      icon: CreditCard,
-      badge: null,
-    },
-    {
-      id: 'documents',
-      label: 'Document Hub',
-      icon: FolderOpen,
-      badge: null,
-    },
-    {
-      id: 'reports',
-      label: 'Reports',
-      icon: BarChart3,
-      badge: null,
-    },
-    {
-      id: 'audit',
-      label: 'Audit Trail',
-      icon: History,
-      badge: null,
-    },
-    {
-      id: 'settings',
-      label: 'Settings & DB',
-      icon: Settings,
-      badge: 'SQL',
-      badgeColor: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+      groupTitle: 'Sistem',
+      items: [
+        {
+          id: 'settings',
+          label: 'Pengaturan & DB',
+          icon: Settings,
+          badge: 'SQL',
+          badgeVariant: 'default',
+        },
+      ],
     },
   ];
 
@@ -118,14 +160,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         .slice(0, 2)
         .join('')
         .toUpperCase()
-    : 'JD';
+    : 'ID';
 
   return (
     <>
       {/* Mobile Backdrop */}
       {isOpenMobile && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-xs lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-xs lg:hidden"
           onClick={onCloseMobile}
         />
       )}
@@ -133,108 +175,175 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Sidebar Container */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col bg-[#0F172A] text-white transition-all duration-200 ease-in-out lg:static shrink-0 border-r border-slate-800/80',
+          'fixed inset-y-0 left-0 z-50 flex flex-col bg-[#0B0F17] text-slate-300 transition-all duration-200 ease-in-out lg:static shrink-0 border-r border-slate-800/60 select-none',
           isCollapsed ? 'w-20' : 'w-64',
           isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
-        {/* Brand Header */}
-        <div className={cn('flex items-center justify-between border-b border-slate-800/80 h-16', isCollapsed ? 'px-4' : 'px-6')}>
+        {/* Workspace Organization Switcher Header */}
+        <div
+          className={cn(
+            'flex items-center justify-between border-b border-slate-800/80 h-16 transition-all',
+            isCollapsed ? 'px-3 justify-center' : 'px-4'
+          )}
+        >
           <div
             onClick={() => handleNavClick('dashboard')}
-            className="flex items-center gap-3 cursor-pointer overflow-hidden select-none"
+            className="flex items-center gap-3 cursor-pointer overflow-hidden min-w-0"
           >
-            {org.logoUrl ? (
-              <img
-                src={org.logoUrl}
-                alt={org.name}
-                className="w-8 h-8 rounded-lg object-contain bg-white/10 p-0.5 shrink-0 border border-slate-700/60"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0 shadow-xs">
-                {org.name ? org.name.slice(0, 1).toUpperCase() : 'B'}
-              </div>
-            )}
+            {/* Monogram Emblem */}
+            <div className="w-8 h-8 rounded-sm overflow-hidden shrink-0 shadow-xs border border-blue-500/20">
+            <img src="/logo-rk-bendahara.png"
+             alt="Logo"
+             className="w-full h-full object-cover"
+             />
+             
+             </div>
+
             {!isCollapsed && (
-              <span className="text-lg font-bold tracking-tight text-white truncate">
-                {org.name || 'BillingFlow'}
-              </span>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold text-white tracking-tight truncate">
+                    Rajakas
+                    <span className="text-sm font-bold text-blue-400">.ID</span>
+                  </span>
+                  <span className="px-1.5 py-0.2 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[9px] font-bold rounded">
+                    ERP
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400 truncate">
+                  {org.name || 'PT. Inovasi Jaya'}
+                </span>
+              </div>
             )}
           </div>
 
           {/* Desktop Collapse Toggle */}
-          <button
-            onClick={onToggleCollapse}
-            className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-            title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
+          {!isCollapsed && (
+            <button
+              onClick={onToggleCollapse}
+              className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800/80 hover:text-white transition-colors"
+              title="Ciutkan Menu"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentTab === item.id;
+        {/* Navigation Sections */}
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-5 scrollbar-thin scrollbar-thumb-slate-800">
+          {navGroups.map((group, groupIdx) => (
+            <div key={groupIdx} className="space-y-1">
+              {!isCollapsed && group.groupTitle && (
+                <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  {group.groupTitle}
+                </p>
+              )}
 
-            return (
-              <div
-                key={item.id}
-                id={`nav-item-${item.id}`}
-                onClick={() => handleNavClick(item.id)}
-                className={cn(
-                  'px-4 py-3 rounded-lg flex items-center gap-3 cursor-pointer transition-colors text-sm',
-                  isActive
-                    ? 'bg-blue-600/20 text-blue-400 font-medium'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200',
-                  isCollapsed && 'justify-center px-2'
-                )}
-                title={isCollapsed ? item.label : undefined}
-              >
-                <Icon className={cn('w-5 h-5 shrink-0', isActive ? 'text-blue-400' : 'text-slate-400')} />
-                {!isCollapsed && <span className="font-medium truncate">{item.label}</span>}
-                {!isCollapsed && item.badge && (
-                  <span
-                    className={cn(
-                      'ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider',
-                      item.badgeColor || 'bg-slate-800 text-slate-300'
-                    )}
-                  >
-                    {item.badge}
-                  </span>
-                )}
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = currentTab === item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      id={`nav-item-${item.id}`}
+                      onClick={() => handleNavClick(item.id)}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all text-left group relative',
+                        isActive
+                          ? 'bg-slate-800/90 text-white font-semibold shadow-xs border border-slate-700/60'
+                          : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200',
+                        isCollapsed && 'justify-center px-2 py-2.5'
+                      )}
+                      title={isCollapsed ? item.label : undefined}
+                    >
+                      {/* Active Indicator Bar */}
+                      {isActive && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-blue-500 rounded-r-full" />
+                      )}
+
+                      <Icon
+                        className={cn(
+                          'w-4 h-4 shrink-0 transition-colors',
+                          isActive
+                            ? 'text-blue-400'
+                            : 'text-slate-400 group-hover:text-slate-300'
+                        )}
+                      />
+
+                      {!isCollapsed && (
+                        <span className="truncate flex-1">{item.label}</span>
+                      )}
+
+                      {!isCollapsed && item.badge !== undefined && item.badge !== null && (
+                        <span
+                          className={cn(
+                            'text-[10px] px-1.5 py-0.2 rounded font-mono font-bold shrink-0',
+                            item.badgeVariant === 'danger'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              : item.badgeVariant === 'success'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : item.badgeVariant === 'info'
+                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                              : 'bg-slate-800 text-slate-400 border border-slate-700'
+                          )}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })}
-        </nav>
+            </div>
+          ))}
+        </div>
 
-        {/* User Profile Footer */}
-        <div className="p-4 border-t border-slate-800 bg-[#0F172A]">
+        {/* Collapsed Expand Trigger */}
+        {isCollapsed && (
+          <div className="p-2 border-t border-slate-800/80 flex justify-center">
+            <button
+              onClick={onToggleCollapse}
+              className="h-8 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+              title="Perluas Menu"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* User Profile & Company Metadata Footer */}
+        <div className="p-3 border-t border-slate-800/80 bg-[#070A0F]">
           <div
             onClick={() => handleNavClick('settings')}
             className={cn(
-              'flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800/80 cursor-pointer transition-colors',
+              'flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-slate-800/60 cursor-pointer transition-colors group',
               isCollapsed && 'justify-center p-1'
             )}
-            title="Account & Organization Settings"
+            title="Pengaturan Akun & Organisasi"
           >
             {user.avatarUrl ? (
               <img
                 src={user.avatarUrl}
                 alt={user.name}
-                className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-700"
+                className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-700"
               />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-white shrink-0">
+              <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-200 shrink-0">
                 {userInitials}
               </div>
             )}
+
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{user.name}</p>
-                <p className="text-xs text-slate-400 truncate">{org.name || 'PT. Inovasi Jaya'}</p>
+                <p className="text-xs font-bold text-slate-200 truncate group-hover:text-white">
+                  {user.name}
+                </p>
+                <p className="text-[10px] text-slate-400 truncate capitalize">
+                  {user.role} • Keuangan
+                </p>
               </div>
             )}
           </div>

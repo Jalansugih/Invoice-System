@@ -52,23 +52,23 @@ export const RecentInvoicesTable: React.FC<RecentInvoicesTableProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden flex flex-col justify-between h-full">
+    <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden flex flex-col justify-between h-full">
       {/* Table Header */}
-      <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/40">
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
             <FileText className="w-4 h-4" />
           </div>
           <div>
             <h3 className="font-bold text-slate-900 text-sm">Faktur Terbaru</h3>
-            <p className="text-[11px] text-slate-400">Daftar transaksi dan status penagihan terkini</p>
+            <p className="text-[11px] text-slate-500">Daftar transaksi penerbitan faktur dan status penagihan</p>
           </div>
         </div>
         <button
           onClick={onViewAll}
           className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-xs font-semibold hover:underline transition-all cursor-pointer"
         >
-          <span>Lihat Semua ({invoices.length})</span>
+          <span>Buka Semua ({invoices.length})</span>
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>

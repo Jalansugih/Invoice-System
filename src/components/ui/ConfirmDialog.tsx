@@ -5,27 +5,34 @@ import { AlertTriangle, Info, CheckCircle2 } from 'lucide-react';
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
+  onCancel?: () => void;
   onConfirm: () => void;
   title: string;
   message: string;
   confirmText?: string;
   cancelText?: string;
   type?: 'danger' | 'warning' | 'info' | 'success';
+  variant?: 'danger' | 'warning' | 'info' | 'success';
   isLoading?: boolean;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isOpen,
   onClose,
+  onCancel,
   onConfirm,
   title,
   message,
   confirmText = 'Konfirmasi',
   cancelText = 'Batal',
-  type = 'danger',
+  type,
+  variant = 'danger',
   isLoading = false,
 }) => {
+  const handleClose = onClose || onCancel || (() => {});
+  const effectiveType = type || variant || 'danger';
+
   const icons = {
     danger: <AlertTriangle className="h-6 w-6 text-rose-600" />,
     warning: <AlertTriangle className="h-6 w-6 text-amber-600" />,
@@ -43,21 +50,21 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title={
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-slate-100 shrink-0">{icons[type]}</div>
+          <div className="p-2 rounded-lg bg-slate-100 shrink-0">{icons[effectiveType]}</div>
           <span>{title}</span>
         </div>
       }
       maxWidth="md"
       footer={
         <>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={isLoading}>
+          <Button variant="outline" size="sm" onClick={handleClose} disabled={isLoading}>
             {cancelText}
           </Button>
           <Button
-            variant={buttonVariants[type]}
+            variant={buttonVariants[effectiveType] || 'danger'}
             size="sm"
             onClick={onConfirm}
             isLoading={isLoading}

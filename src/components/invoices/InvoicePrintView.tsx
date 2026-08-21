@@ -170,9 +170,9 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               INFORMASI KONTAK PIC:
             </span>
-            <p className="text-xs font-semibold text-slate-900 mt-1">{invoice.customerPic}</p>
-            <p className="text-xs text-slate-600">{invoice.customerEmail}</p>
-            <p className="text-xs text-slate-600">{invoice.customerPhone}</p>
+            <p className="text-xs font-semibold text-slate-900 mt-1">{invoice.customerPic || invoice.customerName || '-'}</p>
+            <p className="text-xs text-slate-600">{invoice.customerEmail || '-'}</p>
+            <p className="text-xs text-slate-600">{invoice.customerPhone || '-'}</p>  
           </div>
         </div>
 
@@ -345,7 +345,7 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
 
         {/* Document Footer Verification */}
         <div className="text-center text-[10px] text-slate-400 border-t border-slate-100 pt-4 mt-6 print:border-slate-200">
-          Dokumen ini digenerate secara digital oleh sistem BillingFlow SaaS Enterprise. Sah dan mengikat secara hukum.
+          Dokumen ini digenerate secara digital oleh sistem Rajakas.id Enterprise. dan Sah, Mengikat secara hukum.
         </div>
       </div>
     </div>

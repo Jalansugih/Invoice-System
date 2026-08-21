@@ -143,7 +143,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const existingUsers = [
           { email: 'admin@billingflow.id', name: 'Budi Santoso', role: 'admin' as UserRole },
           { email: 'finance@billingflow.id', name: 'Siti Rahma', role: 'finance' as UserRole },
-          { email: 'staff@billingflow.id', name: 'Ahmad Fauzi', role: 'staff' as UserRole },
+          { email: 'staff@billingflow.id', name: 'Anas All', role: 'staff' as UserRole },
         ];
 
         const match = existingUsers.find(u => u.email.toLowerCase() === email.toLowerCase()) || {
@@ -274,7 +274,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       owner: { name: 'Direktur Utama', email: 'owner@billingflow.id' },
       admin: { name: 'Budi Santoso (Admin)', email: 'admin@billingflow.id' },
       finance: { name: 'Siti Rahma (Finance)', email: 'finance@billingflow.id' },
-      staff: { name: 'Ahmad Fauzi (Staff)', email: 'staff@billingflow.id' },
+      staff: { name: 'Admin (Staff)', email: 'staff@billingflow.id' },
     };
 
     const target = demoMap[role] || demoMap.admin;

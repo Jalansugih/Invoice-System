@@ -422,6 +422,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
         cancelText="Batal"
         variant="danger"
         onConfirm={handleDeleteConfirm}
+        onClose={() => setInvoiceToDelete(null)}
         onCancel={() => setInvoiceToDelete(null)}
       />
     </div>

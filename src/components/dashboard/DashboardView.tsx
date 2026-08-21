@@ -11,11 +11,16 @@ import {
   FilePlus,
   CreditCard,
   MailPlus,
-  AlertTriangle,
+  AlertCircle,
   ArrowRight,
-  TrendingUp,
-  Clock,
-  Sparkles,
+  Landmark,
+  Receipt,
+  Calendar,
+  Filter,
+  Download,
+  Building2,
+  CheckCircle2,
+  ChevronRight,
 } from 'lucide-react';
 import { formatRupiah, formatIndoDate } from '../../lib/utils';
 
@@ -38,6 +43,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [invoices, setInvoices] = useState(StorageService.getInvoices());
   const [payments, setPayments] = useState(StorageService.getPayments());
   const [agingData, setAgingData] = useState(StorageService.getAgingReceivables());
+  const [selectedPeriod, setSelectedPeriod] = useState<'month' | 'quarter' | 'year'>('month');
 
   const refreshData = () => {
     setStats(StorageService.getDashboardStats());
@@ -54,35 +60,71 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const overdueInvoices = invoices.filter((i) => i.status === 'overdue');
   const org = StorageService.getOrganization();
+  const bankTxs = StorageService.getBankTransactions();
+  const unreconciledCount = bankTxs.filter((s) => s.status === 'unmatched' || s.status === 'matched').length;
 
   return (
     <div className="space-y-6 pb-12">
-      {/* 1. Welcoming Dashboard Header & Quick Action Hub */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-2xs">
+      {/* 1. Executive Context & Action Header */}
+      <div className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
               Dashboard Keuangan & Penagihan
             </h1>
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Live Sync
+            <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+              {org.name || 'PT. Inovasi Jaya'}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Ringkasan performa pendapatan, arus kas faktur, dan manajemen umur piutang {org.name}
+            Ringkasan piutang usaha, arus kas penagihan, rekonsiliasi perbankan, dan kepatuhan pajak.
           </p>
         </div>
 
-        {/* Quick Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Period Selector & Action Group */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Period Toggle */}
+          <div className="inline-flex items-center p-1 bg-slate-100/90 rounded-lg border border-slate-200 text-xs font-medium text-slate-600">
+            <button
+              onClick={() => setSelectedPeriod('month')}
+              className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                selectedPeriod === 'month'
+                  ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                  : 'hover:text-slate-900'
+              }`}
+            >
+              Bulan Ini
+            </button>
+            <button
+              onClick={() => setSelectedPeriod('quarter')}
+              className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                selectedPeriod === 'quarter'
+                  ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                  : 'hover:text-slate-900'
+              }`}
+            >
+              Kuartal (Q3)
+            </button>
+            <button
+              onClick={() => setSelectedPeriod('year')}
+              className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                selectedPeriod === 'year'
+                  ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                  : 'hover:text-slate-900'
+              }`}
+            >
+              YTD 2026
+            </button>
+          </div>
+
+          {/* Action Buttons */}
           <Button
             size="sm"
             onClick={() => onQuickAction('new_invoice')}
             leftIcon={<FilePlus className="w-4 h-4" />}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-2xs"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-xs"
           >
-            + Buat Faktur Baru
+            + Buat Faktur
           </Button>
 
           <Button
@@ -90,61 +132,115 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             size="sm"
             onClick={() => onQuickAction('new_payment')}
             leftIcon={<CreditCard className="w-4 h-4 text-emerald-600" />}
-            className="text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 font-medium"
+            className="text-slate-700 hover:bg-slate-50 font-medium"
           >
-            Catat Pembayaran
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onQuickAction('new_letter')}
-            leftIcon={<MailPlus className="w-4 h-4 text-amber-600" />}
-            className="text-slate-700 hover:bg-amber-50 hover:border-amber-300 font-medium"
-          >
-            Surat Tagihan
+            Catat Kas Masuk
           </Button>
         </div>
       </div>
 
-      {/* 2. Overdue Urgent Alert Banner */}
-      {overdueInvoices.length > 0 && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50/90 p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="p-2.5 rounded-xl bg-rose-100 text-rose-700 shrink-0">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-bold text-rose-950">
-                  Perhatian: {overdueInvoices.length} Faktur Melewati Jatuh Tempo
-                </p>
-                <span className="px-2 py-0.5 rounded-full bg-rose-200/80 text-rose-800 text-[10px] font-bold">
-                  {formatRupiah(stats.overdueAmount)}
-                </span>
-              </div>
-              <p className="text-xs text-rose-700 mt-0.5">
-                Segera terbitkan Surat Peringatan (SP 1 / SP 2 / SP 3 Somasi) untuk mempercepat pelunasan pelanggan.
-              </p>
-            </div>
-          </div>
-
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={() => onNavigate('billing_letters')}
-            rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
-            className="shrink-0 font-semibold shadow-2xs"
-          >
-            Kirim Surat Tagihan
-          </Button>
-        </div>
-      )}
-
-      {/* 3. Four Metric Key Performance Indicator (KPI) Cards */}
+      {/* 2. Executive KPI Cards */}
       <DashboardStatsCards stats={stats} onNavigate={onNavigate} />
 
-      {/* 4. Primary Row: Revenue Trend Bar Chart (2 cols) & Aging Receivables Schedule (1 col) */}
+      {/* 3. Operational Action Strip / Pusat Tugas Keuangan */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Task 1: Overdue Invoices Alert & Action */}
+        <div
+          onClick={() => onNavigate(overdueInvoices.length > 0 ? 'billing_letters' : 'invoices')}
+          className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3.5 ${
+            overdueInvoices.length > 0
+              ? 'bg-rose-50/50 border-rose-200/90 hover:border-rose-300'
+              : 'bg-white border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <div
+            className={`p-2 rounded-lg shrink-0 ${
+              overdueInvoices.length > 0
+                ? 'bg-rose-100 text-rose-700'
+                : 'bg-emerald-50 text-emerald-600'
+            }`}
+          >
+            {overdueInvoices.length > 0 ? (
+              <AlertCircle className="w-4 h-4" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-1">
+              <p className="text-xs font-bold text-slate-900">Tindakan Penagihan (SP)</p>
+              {overdueInvoices.length > 0 && (
+                <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded font-mono">
+                  {overdueInvoices.length} Faktur
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+              {overdueInvoices.length > 0
+                ? `${formatRupiah(stats.overdueAmount)} melewati jatuh tempo`
+                : 'Semua faktur berjalan tertagih tepat waktu'}
+            </p>
+            <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-blue-600">
+              <span>{overdueInvoices.length > 0 ? 'Kirim Surat Peringatan' : 'Lihat Rekap Faktur'}</span>
+              <ChevronRight className="w-3 h-3" />
+            </div>
+          </div>
+        </div>
+
+        {/* Task 2: Bank Reconciliation Status */}
+        <div
+          onClick={() => onNavigate('reconciliation')}
+          className="bg-white p-4 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer flex items-start gap-3.5"
+        >
+          <div className="p-2 rounded-lg bg-blue-50 text-blue-600 shrink-0">
+            <Landmark className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-1">
+              <p className="text-xs font-bold text-slate-900">Rekonsiliasi Bank Feed</p>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                Live Feed
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+              {unreconciledCount > 0
+                ? `${unreconciledCount} mutasi menunggu pencocokan`
+                : 'BCA & Mandiri telah cocok 100%'}
+            </p>
+            <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-blue-600">
+              <span>Buka Rekonsiliasi Bank</span>
+              <ChevronRight className="w-3 h-3" />
+            </div>
+          </div>
+        </div>
+
+        {/* Task 3: Tax Compliance Status */}
+        <div
+          onClick={() => onNavigate('tax_reports')}
+          className="bg-white p-4 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer flex items-start gap-3.5"
+        >
+          <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
+            <Receipt className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-1">
+              <p className="text-xs font-bold text-slate-900">Kepatuhan Pajak (DJP)</p>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                Masa 8 / 2026
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+              SPT Masa PPN 1111 & Unifikasi PPh 21/23/4(2)
+            </p>
+            <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-blue-600">
+              <span>Periksa Status Pajak</span>
+              <ChevronRight className="w-3 h-3" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Primary Analytical Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         <div className="lg:col-span-2">
           <RevenueChart invoices={invoices} payments={payments} />
@@ -154,7 +250,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* 5. Secondary Row: Invoice Status Breakdown (1 col) & Recent Invoices Table (2 cols) */}
+      {/* 5. Secondary Operational Data Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         <div>
           <InvoiceStatusChart invoices={invoices} />

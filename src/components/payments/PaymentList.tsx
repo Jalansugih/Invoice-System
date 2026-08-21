@@ -12,16 +12,21 @@ import {
   Download,
   Eye,
   Trash2,
+  Landmark,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 
 export interface PaymentListProps {
   onViewReceipt: (payment: Payment) => void;
   onCreateNewPayment: () => void;
+  onNavigateReconciliation?: () => void;
 }
 
 export const PaymentList: React.FC<PaymentListProps> = ({
   onViewReceipt,
   onCreateNewPayment,
+  onNavigateReconciliation,
 }) => {
   const [payments, setPayments] = useState(StorageService.getPayments());
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,6 +103,17 @@ export const PaymentList: React.FC<PaymentListProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onNavigateReconciliation && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onNavigateReconciliation}
+              leftIcon={<Landmark className="w-4 h-4 text-emerald-600" />}
+              className="border-emerald-200 bg-emerald-50/50 text-emerald-800 hover:bg-emerald-100"
+            >
+              Rekonsiliasi Bank Otomatis
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -296,6 +312,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({
         cancelText="Batal"
         variant="danger"
         onConfirm={handleDeleteConfirm}
+        onClose={() => setPaymentToDelete(null)}
         onCancel={() => setPaymentToDelete(null)}
       />
     </div>

@@ -42,18 +42,16 @@ export const InvoiceStatusChart: React.FC<InvoiceStatusChartProps> = ({ invoices
   }, [invoices]);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-6 flex flex-col justify-between h-full">
+    <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between h-full">
       {/* Card Header */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold text-slate-900 text-base">Status Portofolio Faktur</h3>
-          </div>
+          <h3 className="font-bold text-slate-900 text-sm">Status Portofolio Faktur</h3>
           <span className="text-[11px] font-mono text-slate-500 font-medium">
             {stats.totalCount} Faktur
           </span>
         </div>
-        <p className="text-xs text-slate-500 mb-5">Distribusi penyelesaian dan resiko piutang</p>
+        <p className="text-[11px] text-slate-500 mb-4">Distribusi penyelesaian dan risiko piutang usaha</p>
       </div>
 
       {/* Interactive Status Breakdown with Progress Bars & Nominals */}

@@ -203,7 +203,7 @@ export const ReceiptPrintView: React.FC<ReceiptPrintViewProps> = ({ payment, onB
                 <span>Transaksi Sah & Terverifikasi</span>
               </div>
               <p className="text-[11px] text-emerald-700 leading-relaxed">
-                Kuitansi ini merupakan bukti pembayaran resmi yang sah dan mengikat yang dikeluarkan oleh sistem BillingFlow.
+                Kuitansi ini merupakan bukti pembayaran resmi yang sah dan mengikat yang dikeluarkan oleh sistem Rajakas.id Enterprise.
               </p>
             </div>
           </div>

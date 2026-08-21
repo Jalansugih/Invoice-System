@@ -162,7 +162,7 @@
   #printable-receipt *,
   .printable-document * {
     visibility: visible !important;
-    color-adjust: exact !important;
+    print-color-adjust: exact !important;
     -webkit-print-color-adjust: exact !important;
   }
 

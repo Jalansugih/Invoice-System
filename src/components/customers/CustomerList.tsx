@@ -395,6 +395,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
         cancelText="Batal"
         variant="danger"
         onConfirm={handleDeleteConfirm}
+        onClose={() => setCustomerToDelete(null)}
         onCancel={() => setCustomerToDelete(null)}
       />
     </div>

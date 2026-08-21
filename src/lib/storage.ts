@@ -12,6 +12,9 @@ import {
   NotificationItem,
   DashboardStats,
   AgingReceivableGroup,
+  BankTransaction,
+  BankFeedConnection,
+  ReconciliationSummary,
 } from '../types';
 import { formatDocNumber, getDaysOverdue } from './utils';
 
@@ -27,6 +30,8 @@ const STORAGE_KEYS = {
   AUDIT_LOGS: 'billingflow_audit_logs',
   NOTIFICATIONS: 'billingflow_notifications',
   SEQUENCES: 'billingflow_sequences',
+  BANK_TRANSACTIONS: 'billingflow_bank_transactions',
+  BANK_CONNECTIONS: 'billingflow_bank_connections',
 };
 
 // Default organization
@@ -61,7 +66,7 @@ export const initialOrganization: Organization = {
       isDefault: false,
     },
   ],
-  signatureName: 'Budi Hartono, SE, Ak., CA',
+  signatureName: 'Anas Abdul Latif',
   signatureRole: 'Direktur Keuangan (CFO)',
   signatureImage: '',
   defaultTaxRate: 11, // PPN 11%
@@ -75,10 +80,10 @@ export const initialOrganization: Organization = {
 
 export const initialUser: UserProfile = {
   id: 'usr-001',
-  name: 'Ahmad Fauzi, S.Kom',
-  email: 'fauzi@billingflow.id',
+  name: 'Anas Allah',
+  email: 'anas@billingflow.id',
   role: 'owner',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  avatarUrl: '/foto-conak.jpg',
   organizationId: 'org-001',
 };
 
@@ -493,7 +498,7 @@ export const initialPayments: Payment[] = [
     accountNumber: 'BCA-8830192833',
     referenceNumber: 'TRF-BCA-9812948',
     notes: 'Pembayaran DP 50% Kontrak Cloud Enterprise',
-    receivedBy: 'Ahmad Fauzi (Owner)',
+    receivedBy: 'Anas All (Owner)',
     receiptNumber: 'KWT/2026/08/00001',
     createdAt: '2026-08-05T11:00:00.000Z',
   },
@@ -511,7 +516,7 @@ export const initialPayments: Payment[] = [
     accountNumber: 'BCA-8830192833',
     referenceNumber: 'TRF-BCA-1029384',
     notes: 'Pelunasan invoice maintenance Q3',
-    receivedBy: 'Ahmad Fauzi (Owner)',
+    receivedBy: 'Anas All (Owner)',
     receiptNumber: 'KWT/2026/08/00002',
     createdAt: '2026-08-10T14:30:00.000Z',
   },
@@ -618,7 +623,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-001',
     userId: 'usr-001',
-    userName: 'Ahmad Fauzi',
+    userName: 'Anas All',
     userRole: 'owner',
     action: 'create',
     module: 'invoices',
@@ -630,7 +635,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-002',
     userId: 'usr-001',
-    userName: 'Ahmad Fauzi',
+    userName: 'Anas All ',
     userRole: 'owner',
     action: 'pay',
     module: 'payments',
@@ -642,7 +647,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-003',
     userId: 'usr-001',
-    userName: 'Ahmad Fauzi',
+    userName: 'Anas All',
     userRole: 'owner',
     action: 'pay',
     module: 'payments',
@@ -654,7 +659,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-004',
     userId: 'usr-001',
-    userName: 'Ahmad Fauzi',
+    userName: 'Anas All',
     userRole: 'owner',
     action: 'create',
     module: 'billing_letters',
@@ -685,6 +690,183 @@ export const initialNotifications: NotificationItem[] = [
     createdAt: '2026-08-10T14:30:00.000Z',
     linkModule: 'payments',
     linkId: 'pay-002',
+  },
+];
+
+export const initialBankConnections: BankFeedConnection[] = [
+  {
+    id: 'conn-001',
+    bankName: 'Bank Central Asia (BCA)',
+    accountNumber: '8830 1928 33',
+    accountHolder: 'PT BILLINGFLOW SOLUSI FINANSIAL',
+    status: 'connected',
+    lastSyncedAt: '2026-08-21T07:15:00.000Z',
+    totalTransactionsCount: 142,
+    feedType: 'api_direct',
+  },
+  {
+    id: 'conn-002',
+    bankName: 'Bank Mandiri',
+    accountNumber: '137 00 9823 4455',
+    accountHolder: 'PT BILLINGFLOW SOLUSI FINANSIAL',
+    status: 'connected',
+    lastSyncedAt: '2026-08-21T06:30:00.000Z',
+    totalTransactionsCount: 88,
+    feedType: 'api_direct',
+  },
+  {
+    id: 'conn-003',
+    bankName: 'BCA Virtual Account Gateway',
+    accountNumber: '8830 1928 XXXX',
+    accountHolder: 'PT BILLINGFLOW SOLUSI FINANSIAL',
+    status: 'connected',
+    lastSyncedAt: '2026-08-21T07:20:00.000Z',
+    totalTransactionsCount: 65,
+    feedType: 'virtual_account',
+  },
+];
+
+export const initialBankTransactions: BankTransaction[] = [
+  {
+    id: 'bt-001',
+    bankAccountId: 'bank-001',
+    bankName: 'Bank Central Asia (BCA)',
+    accountNumber: '8830 1928 33',
+    transactionDate: '2026-08-14',
+    valueDate: '2026-08-14',
+    description: 'TRSF E-BANKING CR 2008/FBO/INV/2026/08/00004 PT MAKMUR JAYA LOGISTIK',
+    amount: 17760000,
+    type: 'CR',
+    referenceNumber: 'BCA-TRSF-891023',
+    status: 'matched',
+    matchedInvoiceId: 'inv-004',
+    matchedInvoiceNumber: 'INV/2026/08/00004',
+    matchedCustomerName: 'PT Makmur Jaya Logistik',
+    matchConfidence: 100,
+    matchReason: 'Nomor invoice persis (INV/2026/08/00004) & nominal sesuai (Rp17.760.000)',
+  },
+  {
+    id: 'bt-002',
+    bankAccountId: 'bank-001',
+    bankName: 'Bank Central Asia (BCA)',
+    accountNumber: '8830 1928 33',
+    transactionDate: '2026-08-19',
+    valueDate: '2026-08-19',
+    description: 'PEMINDAHBUKUAN CR KLINIK SEHAT UTAMA INV 00005 DP MEDIKA',
+    amount: 12000000,
+    type: 'CR',
+    referenceNumber: 'BCA-PBK-771239',
+    status: 'matched',
+    matchedInvoiceId: 'inv-005',
+    matchedInvoiceNumber: 'INV/2026/08/00005',
+    matchedCustomerName: 'Klinik Sehat Utama Medika',
+    matchConfidence: 95,
+    matchReason: 'Nama pelanggan (Klinik Sehat Utama) & referensi invoice INV/2026/08/00005',
+  },
+  {
+    id: 'bt-003',
+    bankAccountId: 'bank-001',
+    bankName: 'Bank Central Asia (BCA)',
+    accountNumber: '8830 1928 33',
+    transactionDate: '2026-08-10',
+    valueDate: '2026-08-10',
+    description: 'TRSF CR PELUNASAN NDK KREASI JASA MAINT SLA Q3',
+    amount: 24975000,
+    type: 'CR',
+    referenceNumber: 'BCA-TRSF-554411',
+    status: 'reconciled',
+    matchedPaymentId: 'pay-002',
+    matchedInvoiceId: 'inv-003',
+    matchedInvoiceNumber: 'INV/2026/08/00003',
+    matchedCustomerName: 'CV Nusantara Digital Kreasi',
+    matchConfidence: 100,
+    matchReason: 'Terverifikasi & cocok dengan Kuitansi KWT/2026/08/00002',
+    reconciledAt: '2026-08-10T14:30:00.000Z',
+    reconciledBy: 'Anas All',
+  },
+  {
+    id: 'bt-004',
+    bankAccountId: 'bank-001',
+    bankName: 'Bank Central Asia (BCA)',
+    accountNumber: '8830 1928 33',
+    transactionDate: '2026-08-05',
+    valueDate: '2026-08-05',
+    description: 'TRSF CR PT GLOBAL SOLUSI MANDIRI DP CLOUD ERP',
+    amount: 25000000,
+    type: 'CR',
+    referenceNumber: 'BCA-TRSF-441100',
+    status: 'reconciled',
+    matchedPaymentId: 'pay-001',
+    matchedInvoiceId: 'inv-002',
+    matchedInvoiceNumber: 'INV/2026/08/00002',
+    matchedCustomerName: 'PT Global Solusi Mandiri',
+    matchConfidence: 100,
+    matchReason: 'Terverifikasi & cocok dengan Kuitansi KWT/2026/08/00001',
+    reconciledAt: '2026-08-05T11:00:00.000Z',
+    reconciledBy: 'Anas All',
+  },
+  {
+    id: 'bt-005',
+    bankAccountId: 'bank-002',
+    bankName: 'Bank Mandiri',
+    accountNumber: '137 00 9823 4455',
+    transactionDate: '2026-08-19',
+    valueDate: '2026-08-19',
+    description: 'TRSF MCM CR PT TELKOM PRIMA NUSANTARA CICILAN TMY',
+    amount: 30000000,
+    type: 'CR',
+    referenceNumber: 'MDR-MCM-993214',
+    status: 'matched',
+    matchedInvoiceId: 'inv-001',
+    matchedInvoiceNumber: 'INV/2026/08/00001',
+    matchedCustomerName: 'PT Telkom Prima Nusantara',
+    matchConfidence: 85,
+    matchReason: 'Nama pelanggan (PT Telkom Prima Nusantara) untuk tagihan INV/2026/08/00001',
+  },
+  {
+    id: 'bt-006',
+    bankAccountId: 'bank-001',
+    bankName: 'Bank Central Asia (BCA)',
+    accountNumber: '8830 1928 33',
+    transactionDate: '2026-08-20',
+    valueDate: '2026-08-20',
+    description: 'QRIS SETTLEMENT BATCH 20260820-098 PT BANK CENTRAL ASIA',
+    amount: 5450000,
+    type: 'CR',
+    referenceNumber: 'BCA-QRIS-0098',
+    status: 'unmatched',
+    matchConfidence: 35,
+    matchReason: 'Penerimaan QRIS gabungan - perlu alokasi manual',
+  },
+  {
+    id: 'bt-007',
+    bankAccountId: 'bank-001',
+    bankName: 'Bank Central Asia (BCA)',
+    accountNumber: '8830 1928 33',
+    transactionDate: '2026-08-21',
+    valueDate: '2026-08-21',
+    description: 'BIAYA ADM REK GIRO & PAJAK BUNGA BCA KCU SUDIRMAN',
+    amount: 25000,
+    type: 'DB',
+    referenceNumber: 'BCA-ADM-0821',
+    status: 'ignored',
+    matchConfidence: 0,
+    matchReason: 'Biaya operasional bank / non-tagihan',
+  },
+  {
+    id: 'bt-008',
+    bankAccountId: 'bank-002',
+    bankName: 'Bank Mandiri',
+    accountNumber: '137 00 9823 4455',
+    transactionDate: '2026-08-21',
+    valueDate: '2026-08-21',
+    description: 'TRSF CR CV NUSANTARA DIGITAL KREASI KONTRAK BARU DESIGN',
+    amount: 15000000,
+    type: 'CR',
+    referenceNumber: 'MDR-TRSF-33211',
+    status: 'unmatched',
+    matchConfidence: 50,
+    matchReason: 'Diterima dari CV Nusantara Digital Kreasi (Belum ada invoice aktif yang sesuai)',
   },
 ];
 
@@ -1621,6 +1803,589 @@ export class StorageService {
     ];
   }
 
+  // ==========================================
+  // BANK RECONCILIATION METHODS
+  // ==========================================
+
+  public static getBankConnections(): BankFeedConnection[] {
+    return this.getItem<BankFeedConnection[]>(STORAGE_KEYS.BANK_CONNECTIONS, initialBankConnections);
+  }
+
+  public static saveBankConnections(conns: BankFeedConnection[]): void {
+    this.setItem(STORAGE_KEYS.BANK_CONNECTIONS, conns);
+  }
+
+  public static getBankTransactions(): BankTransaction[] {
+    return this.getItem<BankTransaction[]>(STORAGE_KEYS.BANK_TRANSACTIONS, initialBankTransactions);
+  }
+
+  public static saveBankTransactions(txs: BankTransaction[]): void {
+    this.setItem(STORAGE_KEYS.BANK_TRANSACTIONS, txs);
+  }
+
+  public static addBankTransaction(tx: Omit<BankTransaction, 'id'>): BankTransaction {
+    const txs = this.getBankTransactions();
+    const newTx: BankTransaction = {
+      ...tx,
+      id: `bt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    };
+    txs.unshift(newTx);
+    this.saveBankTransactions(txs);
+    return newTx;
+  }
+
+  public static updateBankTransaction(id: string, partial: Partial<BankTransaction>): BankTransaction | undefined {
+    const txs = this.getBankTransactions();
+    const index = txs.findIndex((t) => t.id === id);
+    if (index === -1) return undefined;
+
+    txs[index] = { ...txs[index], ...partial };
+    this.saveBankTransactions(txs);
+    return txs[index];
+  }
+
+  public static deleteBankTransaction(id: string): boolean {
+    const txs = this.getBankTransactions();
+    const filtered = txs.filter((t) => t.id !== id);
+    if (filtered.length === txs.length) return false;
+    this.saveBankTransactions(filtered);
+    return true;
+  }
+
+  public static ignoreBankTransaction(id: string, notes?: string): BankTransaction | undefined {
+    return this.updateBankTransaction(id, {
+      status: 'ignored',
+      notes: notes || 'Ditandai abaikan / transaksi non-tagihan',
+    });
+  }
+
+  public static unmatchBankTransaction(id: string): BankTransaction | undefined {
+    return this.updateBankTransaction(id, {
+      status: 'unmatched',
+      matchedInvoiceId: undefined,
+      matchedInvoiceNumber: undefined,
+      matchedCustomerName: undefined,
+      matchConfidence: 0,
+      matchReason: undefined,
+    });
+  }
+
+  /**
+   * Intelligently scans unmatched/matched transactions and pairs them with open invoices or payments.
+   */
+  public static autoMatchTransactions(): { matchedCount: number; updatedTransactions: BankTransaction[] } {
+    const txs = this.getBankTransactions();
+    const invoices = this.getInvoices();
+    const payments = this.getPayments();
+    let matchedCount = 0;
+
+    const updated = txs.map((tx) => {
+      // If already reconciled, keep as is
+      if (tx.status === 'reconciled') return tx;
+
+      // If DB (debit / outflow), default to ignored or fee
+      if (tx.type === 'DB') {
+        return {
+          ...tx,
+          status: 'ignored' as const,
+          matchConfidence: 0,
+          matchReason: 'Pengeluaran bank / Biaya administrasi (Non-penerimaan tagihan)',
+        };
+      }
+
+      const desc = (tx.description || '').toUpperCase();
+      const ref = (tx.referenceNumber || '').toUpperCase();
+      const amount = tx.amount;
+
+      // 1. Check if matches an existing verified payment first
+      const matchedExistingPayment = payments.find((p) => {
+        if (p.amount === amount) {
+          const inv = invoices.find((i) => i.id === p.invoiceId);
+          if (inv && (desc.includes(inv.invoiceNumber.toUpperCase()) || desc.includes(p.receiptNumber.toUpperCase()))) {
+            return true;
+          }
+          if (desc.includes(p.customerName.toUpperCase())) return true;
+        }
+        return false;
+      });
+
+      if (matchedExistingPayment) {
+        return {
+          ...tx,
+          status: 'reconciled' as const,
+          matchedPaymentId: matchedExistingPayment.id,
+          matchedInvoiceId: matchedExistingPayment.invoiceId,
+          matchedInvoiceNumber: matchedExistingPayment.invoiceNumber,
+          matchedCustomerName: matchedExistingPayment.customerName,
+          matchConfidence: 100,
+          matchReason: `Cocok dengan Kuitansi ${matchedExistingPayment.receiptNumber} (${matchedExistingPayment.customerName})`,
+          reconciledAt: matchedExistingPayment.createdAt,
+        };
+      }
+
+      // 2. Search candidate open invoices (outstanding > 0)
+      const openInvoices = invoices.filter((i) => i.outstandingAmount > 0 && i.status !== 'cancelled');
+
+      let bestMatch: {
+        invoice: Invoice;
+        score: number;
+        reason: string;
+      } | null = null;
+
+      for (const inv of openInvoices) {
+        let score = 0;
+        const reasons: string[] = [];
+
+        // Check invoice number match (exact, partial, stripped)
+        const cleanInvNum = inv.invoiceNumber.replace(/\//g, '').toUpperCase();
+        const shortNum = inv.invoiceNumber.split('/').pop() || '';
+        const hasExactInvNumber =
+          desc.includes(inv.invoiceNumber.toUpperCase()) ||
+          desc.includes(cleanInvNum) ||
+          ref.includes(inv.invoiceNumber.toUpperCase()) ||
+          (shortNum.length >= 4 && desc.includes(shortNum));
+
+        if (hasExactInvNumber) {
+          score += 60;
+          reasons.push(`No. Invoice ditemukan (${inv.invoiceNumber})`);
+        }
+
+        // Check amount match
+        if (amount === inv.outstandingAmount) {
+          score += 35;
+          reasons.push(`Nominal persis sisa tagihan (${amount.toLocaleString('id-ID')})`);
+        } else if (amount === inv.grandTotal) {
+          score += 30;
+          reasons.push(`Nominal persis total tagihan (${amount.toLocaleString('id-ID')})`);
+        } else if (amount <= inv.outstandingAmount) {
+          score += 15;
+          reasons.push(`Nominal cicilan valid (<= ${inv.outstandingAmount.toLocaleString('id-ID')})`);
+        }
+
+        // Check customer company name / name match
+        const custName = (inv.customerName || '').toUpperCase();
+        const custComp = (inv.customerCompanyName || '').toUpperCase();
+        const keywords = [
+          ...custName.split(' ').filter((w) => w.length > 3 && !['CV', 'PT', 'TBK', 'PERSERO', 'GRUP'].includes(w)),
+          ...custComp.split(' ').filter((w) => w.length > 3 && !['CV', 'PT', 'TBK', 'PERSERO', 'GRUP'].includes(w)),
+        ];
+
+        const matchedKeyword = keywords.find((k) => desc.includes(k) || ref.includes(k));
+        if (matchedKeyword) {
+          score += 20;
+          reasons.push(`Nama klien cocok (${inv.customerName})`);
+        }
+
+        if (score > (bestMatch?.score || 0)) {
+          bestMatch = {
+            invoice: inv,
+            score: Math.min(100, score),
+            reason: reasons.join(' + '),
+          };
+        }
+      }
+
+      if (bestMatch && bestMatch.score >= 50) {
+        matchedCount++;
+        return {
+          ...tx,
+          status: 'matched' as const,
+          matchedInvoiceId: bestMatch.invoice.id,
+          matchedInvoiceNumber: bestMatch.invoice.invoiceNumber,
+          matchedCustomerName: bestMatch.invoice.customerName,
+          matchConfidence: bestMatch.score,
+          matchReason: bestMatch.reason,
+        };
+      }
+
+      // No match found
+      return {
+        ...tx,
+        status: 'unmatched' as const,
+        matchedInvoiceId: undefined,
+        matchedInvoiceNumber: undefined,
+        matchedCustomerName: undefined,
+        matchConfidence: bestMatch ? bestMatch.score : 0,
+        matchReason: 'Belum ditemukan invoice atau pembayaran yang cocok',
+      };
+    });
+
+    this.saveBankTransactions(updated);
+    return { matchedCount, updatedTransactions: updated };
+  }
+
+  /**
+   * Reconciles a bank transaction with an invoice (or existing payment)
+   * Automatically generates payment receipt, updates invoice balance, logs audit, and marks transaction as reconciled.
+   */
+  public static reconcileTransaction(
+    txId: string,
+    invoiceId?: string,
+    paymentId?: string,
+    customAmount?: number
+  ): { success: boolean; payment?: Payment; message: string } {
+    const txs = this.getBankTransactions();
+    const txIndex = txs.findIndex((t) => t.id === txId);
+    if (txIndex === -1) throw new Error('Transaksi bank tidak ditemukan');
+
+    const tx = txs[txIndex];
+    const user = this.getUser();
+
+    // 1. If matching to an existing payment
+    if (paymentId) {
+      const payment = this.getPayments().find((p) => p.id === paymentId);
+      if (!payment) throw new Error('Pembayaran tidak ditemukan');
+
+      tx.status = 'reconciled';
+      tx.matchedPaymentId = payment.id;
+      tx.matchedInvoiceId = payment.invoiceId;
+      tx.matchedInvoiceNumber = payment.invoiceNumber;
+      tx.matchedCustomerName = payment.customerName;
+      tx.matchConfidence = 100;
+      tx.matchReason = `Terhubung manual dengan Kuitansi ${payment.receiptNumber}`;
+      tx.reconciledAt = new Date().toISOString();
+      tx.reconciledBy = user.name;
+
+      txs[txIndex] = tx;
+      this.saveBankTransactions(txs);
+
+      this.addAuditLog(
+        'reconcile',
+        'reconciliation',
+        tx.id,
+        tx.referenceNumber || tx.id,
+        `Rekonsiliasi mutasi bank ${tx.bankName} Rp${tx.amount.toLocaleString('id-ID')} dengan Kuitansi ${payment.receiptNumber}`
+      );
+
+      return {
+        success: true,
+        payment,
+        message: `Berhasil mencocokkan dengan kuitansi ${payment.receiptNumber}`,
+      };
+    }
+
+    // 2. If matching to an open invoice (creates new payment receipt automatically!)
+    const targetInvoiceId = invoiceId || tx.matchedInvoiceId;
+    if (!targetInvoiceId) {
+      throw new Error('Pilih invoice tujuan untuk merekonsiliasi transaksi ini');
+    }
+
+    const invoice = this.getInvoiceById(targetInvoiceId);
+    if (!invoice) throw new Error('Invoice tidak ditemukan');
+
+    const payAmount = customAmount !== undefined ? customAmount : Math.min(tx.amount, invoice.outstandingAmount);
+    if (payAmount <= 0) {
+      throw new Error('Nominal rekonsiliasi harus lebih dari 0');
+    }
+
+    // Record the payment
+    const newPayment = this.recordPayment({
+      invoiceId: invoice.id,
+      amount: payAmount,
+      paymentDate: tx.transactionDate || new Date().toISOString().split('T')[0],
+      paymentMethod: 'bank_transfer',
+      destinationBank: tx.bankName,
+      bankAccountId: tx.bankAccountId,
+      accountNumber: tx.accountNumber,
+      referenceNumber: tx.referenceNumber,
+      notes: `Otomatis direkonsiliasi dari Mutasi Bank (${tx.bankName} - Ref: ${tx.referenceNumber || '-'}). Ket: ${tx.description}`,
+    });
+
+    // Update bank transaction
+    tx.status = 'reconciled';
+    tx.matchedPaymentId = newPayment.id;
+    tx.matchedInvoiceId = invoice.id;
+    tx.matchedInvoiceNumber = invoice.invoiceNumber;
+    tx.matchedCustomerName = invoice.customerName;
+    tx.matchConfidence = 100;
+    tx.matchReason = `Terverifikasi otomatis menjadi Kuitansi ${newPayment.receiptNumber}`;
+    tx.reconciledAt = new Date().toISOString();
+    tx.reconciledBy = user.name;
+
+    txs[txIndex] = tx;
+    this.saveBankTransactions(txs);
+
+    this.addAuditLog(
+      'reconcile',
+      'reconciliation',
+      tx.id,
+      tx.referenceNumber || tx.id,
+      `Rekonsiliasi otomatis: Mutasi bank ${tx.bankName} Rp${tx.amount.toLocaleString('id-ID')} diterbitkan Kuitansi ${newPayment.receiptNumber} untuk ${invoice.invoiceNumber}`
+    );
+
+    this.addNotification({
+      title: 'Rekonsiliasi Bank Berhasil',
+      message: `Mutasi bank Rp${tx.amount.toLocaleString('id-ID')} berhasil diverifikasi untuk ${invoice.invoiceNumber} (${invoice.customerName}).`,
+      type: 'success',
+      linkModule: 'payments',
+      linkId: newPayment.id,
+    });
+
+    return {
+      success: true,
+      payment: newPayment,
+      message: `Berhasil menerbitkan kuitansi ${newPayment.receiptNumber} dan memperbarui status tagihan ${invoice.invoiceNumber}`,
+    };
+  }
+
+  /**
+   * One-click Batch Auto-Reconcile for all transactions with high confidence (>= minConfidence)
+   */
+  public static autoReconcileAllMatched(minConfidence = 85): {
+    reconciledCount: number;
+    totalAmountReconciled: number;
+    newPayments: Payment[];
+  } {
+    // First refresh matches
+    this.autoMatchTransactions();
+    const txs = this.getBankTransactions();
+    const candidates = txs.filter(
+      (t) => t.status === 'matched' && (t.matchConfidence || 0) >= minConfidence && t.matchedInvoiceId
+    );
+
+    let reconciledCount = 0;
+    let totalAmountReconciled = 0;
+    const newPayments: Payment[] = [];
+
+    for (const tx of candidates) {
+      try {
+        const res = this.reconcileTransaction(tx.id, tx.matchedInvoiceId);
+        if (res.success && res.payment) {
+          reconciledCount++;
+          totalAmountReconciled += tx.amount;
+          newPayments.push(res.payment);
+        }
+      } catch (e) {
+        console.error(`Failed to auto reconcile tx ${tx.id}:`, e);
+      }
+    }
+
+    return {
+      reconciledCount,
+      totalAmountReconciled,
+      newPayments,
+    };
+  }
+
+  /**
+   * Import standard bank feed presets
+   */
+  public static importSampleFeedPreset(presetKey: 'bca_live' | 'mandiri_mcm' | 'bca_va' | 'qris_batch'): {
+    count: number;
+    transactions: BankTransaction[];
+  } {
+    const org = this.getOrganization();
+    const today = new Date().toISOString().split('T')[0];
+    let sampleRows: Array<Omit<BankTransaction, 'id'>> = [];
+
+    if (presetKey === 'bca_live') {
+      sampleRows = [
+        {
+          bankAccountId: 'bank-001',
+          bankName: 'Bank Central Asia (BCA)',
+          accountNumber: '8830 1928 33',
+          transactionDate: today,
+          description: 'TRSF E-BANKING CR 2008/FBO/INV/2026/08/00004 PT MAKMUR JAYA LOGISTIK',
+          amount: 17760000,
+          type: 'CR',
+          referenceNumber: `BCA-${Date.now().toString().slice(-6)}`,
+          status: 'unmatched',
+        },
+        {
+          bankAccountId: 'bank-001',
+          bankName: 'Bank Central Asia (BCA)',
+          accountNumber: '8830 1928 33',
+          transactionDate: today,
+          description: 'TRSF CR PT TELKOM PRIMA NUSANTARA PELUNASAN KONTRAK',
+          amount: 50000000,
+          type: 'CR',
+          referenceNumber: `BCA-${(Date.now() + 1).toString().slice(-6)}`,
+          status: 'unmatched',
+        },
+        {
+          bankAccountId: 'bank-001',
+          bankName: 'Bank Central Asia (BCA)',
+          accountNumber: '8830 1928 33',
+          transactionDate: today,
+          description: 'BIAYA ADM PEMELIHARAAN REK GIRO BCA BISNIS',
+          amount: 25000,
+          type: 'DB',
+          referenceNumber: `BCA-ADM-${Date.now().toString().slice(-4)}`,
+          status: 'ignored',
+        },
+      ];
+    } else if (presetKey === 'mandiri_mcm') {
+      sampleRows = [
+        {
+          bankAccountId: 'bank-002',
+          bankName: 'Bank Mandiri',
+          accountNumber: '137 00 9823 4455',
+          transactionDate: today,
+          description: 'TRSF MCM CR CV NUSANTARA DIGITAL KREASI RETENTION 10%',
+          amount: 4500000,
+          type: 'CR',
+          referenceNumber: `MDR-MCM-${Date.now().toString().slice(-6)}`,
+          status: 'unmatched',
+        },
+        {
+          bankAccountId: 'bank-002',
+          bankName: 'Bank Mandiri',
+          accountNumber: '137 00 9823 4455',
+          transactionDate: today,
+          description: 'TRSF MCM CR KLINIK SEHAT UTAMA MEDIKA INV/2026/08/00005',
+          amount: 27750000,
+          type: 'CR',
+          referenceNumber: `MDR-MCM-${(Date.now() + 2).toString().slice(-6)}`,
+          status: 'unmatched',
+        },
+      ];
+    } else if (presetKey === 'bca_va') {
+      sampleRows = [
+        {
+          bankAccountId: 'bank-001',
+          bankName: 'BCA Virtual Account',
+          accountNumber: '8830 1928 0001',
+          transactionDate: today,
+          description: 'BCA VA 883019280001 SETTLEMENT INV/2026/08/00002 PT GLOBAL SOLUSI',
+          amount: 24950000,
+          type: 'CR',
+          referenceNumber: `VA-BCA-${Date.now().toString().slice(-6)}`,
+          status: 'unmatched',
+        },
+      ];
+    } else {
+      sampleRows = [
+        {
+          bankAccountId: 'bank-001',
+          bankName: 'QRIS Dinamis Settlement',
+          accountNumber: 'NMID 936000088192',
+          transactionDate: today,
+          description: 'QRIS BATCH SETTLEMENT MERCHANT PT BILLINGFLOW SOLUSI',
+          amount: 8350000,
+          type: 'CR',
+          referenceNumber: `QRIS-${Date.now().toString().slice(-6)}`,
+          status: 'unmatched',
+        },
+      ];
+    }
+
+    const currentTxs = this.getBankTransactions();
+    const newItems: BankTransaction[] = sampleRows.map((row, idx) => ({
+      ...row,
+      id: `bt-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+    }));
+
+    const combined = [...newItems, ...currentTxs];
+    this.saveBankTransactions(combined);
+    this.autoMatchTransactions();
+
+    return {
+      count: newItems.length,
+      transactions: newItems,
+    };
+  }
+
+  /**
+   * Import custom parsed statements from CSV or Paste text
+   */
+  public static importCustomStatements(
+    items: Array<{
+      date: string;
+      description: string;
+      amount: number;
+      type: 'CR' | 'DB';
+      ref?: string;
+      bankName?: string;
+      accountNumber?: string;
+    }>
+  ): { count: number; transactions: BankTransaction[] } {
+    const org = this.getOrganization();
+    const defaultBank = org.bankAccounts[0];
+    const currentTxs = this.getBankTransactions();
+
+    const newItems: BankTransaction[] = items.map((item, idx) => ({
+      id: `bt-import-${Date.now()}-${idx}`,
+      bankAccountId: defaultBank?.id || 'bank-001',
+      bankName: item.bankName || defaultBank?.bankName || 'Bank Central Asia (BCA)',
+      accountNumber: item.accountNumber || defaultBank?.accountNumber || '8830 1928 33',
+      transactionDate: item.date || new Date().toISOString().split('T')[0],
+      valueDate: item.date || new Date().toISOString().split('T')[0],
+      description: item.description,
+      amount: Math.abs(item.amount),
+      type: item.type || (item.amount >= 0 ? 'CR' : 'DB'),
+      referenceNumber: item.ref || `IMP-${Date.now().toString().slice(-6)}-${idx + 1}`,
+      status: item.type === 'DB' ? 'ignored' : 'unmatched',
+    }));
+
+    const combined = [...newItems, ...currentTxs];
+    this.saveBankTransactions(combined);
+    this.autoMatchTransactions();
+
+    return {
+      count: newItems.length,
+      transactions: newItems,
+    };
+  }
+
+  /**
+   * Summary calculation for bank reconciliation widget & dashboard
+   */
+  public static getReconciliationSummary(): ReconciliationSummary {
+    const txs = this.getBankTransactions();
+    const totalFeedTransactions = txs.length;
+
+    let totalInflowAmount = 0;
+    let totalOutflowAmount = 0;
+    let reconciledCount = 0;
+    let reconciledAmount = 0;
+    let matchedReadyCount = 0;
+    let matchedReadyAmount = 0;
+    let unmatchedCount = 0;
+    let unmatchedAmount = 0;
+    let ignoredCount = 0;
+
+    txs.forEach((t) => {
+      if (t.type === 'CR') {
+        totalInflowAmount += t.amount;
+        if (t.status === 'reconciled') {
+          reconciledCount++;
+          reconciledAmount += t.amount;
+        } else if (t.status === 'matched') {
+          matchedReadyCount++;
+          matchedReadyAmount += t.amount;
+        } else if (t.status === 'unmatched') {
+          unmatchedCount++;
+          unmatchedAmount += t.amount;
+        } else if (t.status === 'ignored') {
+          ignoredCount++;
+        }
+      } else {
+        totalOutflowAmount += t.amount;
+        if (t.status === 'ignored') {
+          ignoredCount++;
+        }
+      }
+    });
+
+    const inflowTxCount = txs.filter((t) => t.type === 'CR').length;
+    const matchPercentage =
+      inflowTxCount > 0 ? Math.round(((reconciledCount + matchedReadyCount) / inflowTxCount) * 100) : 0;
+
+    return {
+      totalFeedTransactions,
+      totalInflowAmount,
+      totalOutflowAmount,
+      reconciledCount,
+      reconciledAmount,
+      matchedReadyCount,
+      matchedReadyAmount,
+      unmatchedCount,
+      unmatchedAmount,
+      ignoredCount,
+      matchPercentage,
+    };
+  }
+
   // Reset to initial demo database
   public static resetToDefault() {
     localStorage.clear();
@@ -1635,6 +2400,8 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.AUDIT_LOGS, initialAuditLogs);
     this.setItem(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
     this.setItem(STORAGE_KEYS.SEQUENCES, initialSequences);
+    this.setItem(STORAGE_KEYS.BANK_CONNECTIONS, initialBankConnections);
+    this.setItem(STORAGE_KEYS.BANK_TRANSACTIONS, initialBankTransactions);
     this.recalculateCustomerBalances();
   }
 }

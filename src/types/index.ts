@@ -115,6 +115,8 @@ export interface Invoice {
   customerPhone: string;
   customerAddress: string;
   customerNpwp?: string;
+  customerPic?: string; // <-- Tambahkan baris ini
+  // ... sisa properti lainnya
   issueDate: string; // YYYY-MM-DD
   dueDate: string; // YYYY-MM-DD
   poNumber?: string;
@@ -238,8 +240,8 @@ export interface AuditLog {
   userId: string;
   userName: string;
   userRole: UserRole;
-  action: 'create' | 'update' | 'delete' | 'send' | 'pay' | 'cancel' | 'status_change';
-  module: 'invoices' | 'payments' | 'customers' | 'billing_letters' | 'products' | 'settings' | 'auth';
+  action: 'create' | 'update' | 'delete' | 'send' | 'pay' | 'cancel' | 'status_change' | 'reconcile';
+  module: 'invoices' | 'payments' | 'customers' | 'billing_letters' | 'products' | 'settings' | 'auth' | 'reconciliation';
   recordId: string;
   recordTitle: string;
   entityType?: string;
@@ -249,6 +251,58 @@ export interface AuditLog {
   newValue?: string;
   details: string;
   timestamp: string;
+}
+
+export type BankTransactionType = 'CR' | 'DB';
+export type BankReconciliationStatus = 'unmatched' | 'matched' | 'reconciled' | 'ignored';
+
+export interface BankTransaction {
+  id: string;
+  bankAccountId: string;
+  bankName: string;
+  accountNumber: string;
+  transactionDate: string; // YYYY-MM-DD
+  valueDate?: string;
+  description: string;
+  amount: number;
+  type: BankTransactionType;
+  referenceNumber: string;
+  status: BankReconciliationStatus;
+  matchedPaymentId?: string;
+  matchedInvoiceId?: string;
+  matchedInvoiceNumber?: string;
+  matchedCustomerName?: string;
+  matchConfidence?: number; // 0 to 100
+  matchReason?: string;
+  reconciledAt?: string;
+  reconciledBy?: string;
+  notes?: string;
+  rawPayload?: Record<string, any>;
+}
+
+export interface BankFeedConnection {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  status: 'connected' | 'syncing' | 'error' | 'disconnected';
+  lastSyncedAt: string;
+  totalTransactionsCount: number;
+  feedType: 'api_direct' | 'csv_statement' | 'virtual_account' | 'qris_gateway';
+}
+
+export interface ReconciliationSummary {
+  totalFeedTransactions: number;
+  totalInflowAmount: number;
+  totalOutflowAmount: number;
+  reconciledCount: number;
+  reconciledAmount: number;
+  matchedReadyCount: number;
+  matchedReadyAmount: number;
+  unmatchedCount: number;
+  unmatchedAmount: number;
+  ignoredCount: number;
+  matchPercentage: number;
 }
 
 export interface NotificationItem {
