@@ -345,7 +345,7 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
 
         {/* Document Footer Verification */}
         <div className="text-center text-[10px] text-slate-400 border-t border-slate-100 pt-4 mt-6 print:border-slate-200">
-          Dokumen ini digenerate secara digital oleh sistem Rajakas.id Enterprise. Sah dan mengikat secara hukum.
+          Dokumen ini digenerate secara digital oleh sistem BillingFlow SaaS Enterprise. Sah dan mengikat secara hukum.
         </div>
       </div>
     </div>

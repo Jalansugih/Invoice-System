@@ -12,9 +12,11 @@ import {
   History,
   ChevronLeft,
   ChevronRight,
+  LogOut,
 } from 'lucide-react';
 import { StorageService } from '../../lib/storage';
 import { cn } from '../../lib/utils';
+import { useAuth } from '../auth/Auth';
 
 export interface SidebarProps {
   currentTab: string;
@@ -33,8 +35,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
 }) => {
+  const { user: authUser, signOut } = useAuth();
   const org = StorageService.getOrganization();
-  const user = StorageService.getUser();
+  const user = authUser || StorageService.getUser();
   const invoices = StorageService.getInvoices();
   const overdueCount = invoices.filter((i) => i.status === 'overdue').length;
 
@@ -136,48 +139,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       >
         {/* Brand Header */}
-       <div
-  className={cn(
-    'flex items-center justify-between border-b border-slate-800/80 h-16',
-    isCollapsed ? 'px-4' : 'px-6'
-  )}
->
-  <div
-    onClick={() => handleNavClick('dashboard')}
-    className="flex items-center gap-3 cursor-pointer overflow-hidden select-none"
-  >
-    <img
-      src="/logo-rk-bendahara.png"
-      alt="RajaKas.id"
-      className="w-8 h-8 rounded-lg object-contain bg-white/10 p-0.5 shrink-0 border border-slate-700/60"
-    />
+        <div className={cn('flex items-center justify-between border-b border-slate-800/80 h-16', isCollapsed ? 'px-4' : 'px-6')}>
+          <div
+            onClick={() => handleNavClick('dashboard')}
+            className="flex items-center gap-3 cursor-pointer overflow-hidden select-none"
+          >
+            {org.logoUrl ? (
+              <img
+                src={org.logoUrl}
+                alt={org.name}
+                className="w-8 h-8 rounded-lg object-contain bg-white/10 p-0.5 shrink-0 border border-slate-700/60"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0 shadow-xs">
+                {org.name ? org.name.slice(0, 1).toUpperCase() : 'B'}
+              </div>
+            )}
+            {!isCollapsed && (
+              <span className="text-lg font-bold tracking-tight text-white truncate">
+                {org.name || 'BillingFlow'}
+              </span>
+            )}
+          </div>
 
-    {!isCollapsed && (
-      <div className="flex flex-col min-w-0">
-        <span className="text-lg font-bold tracking-tight text-white truncate leading-tight">
-          RajaKas<span className="text-blue-400">.id</span>
-        </span>
-
-        <span className="text-[10px] font-medium text-slate-400 tracking-wide truncate">
-          Billing System
-        </span>
-      </div>
-    )}
-  </div>
-
-  {/* Desktop Collapse Toggle */}
-  <button
-    onClick={onToggleCollapse}
-    className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-    title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-  >
-    {isCollapsed ? (
-      <ChevronRight className="w-4 h-4" />
-    ) : (
-      <ChevronLeft className="w-4 h-4" />
-    )}
-  </button>
-</div>
+          {/* Desktop Collapse Toggle */}
+          <button
+            onClick={onToggleCollapse}
+            className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+          >
+            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        </div>
 
         {/* Navigation Items */}
         <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-1">

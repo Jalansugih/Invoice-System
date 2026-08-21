@@ -115,7 +115,6 @@ export interface Invoice {
   customerPhone: string;
   customerAddress: string;
   customerNpwp?: string;
-  customerPic?: string; // <-- Ditambahkan
   issueDate: string; // YYYY-MM-DD
   dueDate: string; // YYYY-MM-DD
   poNumber?: string;

@@ -32,23 +32,23 @@ const STORAGE_KEYS = {
 // Default organization
 export const initialOrganization: Organization = {
   id: 'org-001',
-  name: 'PT. Putera Raja Madina',
+  name: 'PT BillingFlow Solusi Finansial',
   tagline: 'Sistem Penagihan & Manajemen Keuangan Terpadu',
-  logoUrl: '/logo-rk-bendahara.png',
-  email: 'finance@rajakas.id',
+  logoUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=160&auto=format&fit=crop&q=80',
+  email: 'finance@billingflow.id',
   phone: '+62 21 5589 8899',
   address: 'Jl. Jenderal Sudirman Kav. 52-53, Menara Sentral Lt. 18',
   city: 'Jakarta Selatan',
   province: 'DKI Jakarta',
   postalCode: '12190',
   npwp: '01.345.678.9-012.000',
-  website: 'https://rajakas.id',
+  website: 'https://billingflow.id',
   bankAccounts: [
     {
       id: 'bank-001',
       bankName: 'Bank Central Asia (BCA)',
       accountNumber: '8830 1928 33',
-      accountHolder: 'PT. PUTERA RAJA MADINA',
+      accountHolder: 'PT BILLINGFLOW SOLUSI FINANSIAL',
       branch: 'KCU Sudirman',
       isDefault: true,
     },
@@ -56,7 +56,7 @@ export const initialOrganization: Organization = {
       id: 'bank-002',
       bankName: 'Bank Mandiri',
       accountNumber: '137 00 9823 4455',
-      accountHolder: 'PT. PUTERA RAJA MADINA',
+      accountHolder: 'PT BILLINGFLOW SOLUSI FINANSIAL',
       branch: 'KC Thamrin',
       isDefault: false,
     },
@@ -75,10 +75,10 @@ export const initialOrganization: Organization = {
 
 export const initialUser: UserProfile = {
   id: 'usr-001',
-  name: 'Anas All',
-  email: 'hallo@binausaha.com',
+  name: 'Ahmad Fauzi, S.Kom',
+  email: 'fauzi@billingflow.id',
   role: 'owner',
-  avatarUrl: '/foto-conak.jpg',
+  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
   organizationId: 'org-001',
 };
 
@@ -493,7 +493,7 @@ export const initialPayments: Payment[] = [
     accountNumber: 'BCA-8830192833',
     referenceNumber: 'TRF-BCA-9812948',
     notes: 'Pembayaran DP 50% Kontrak Cloud Enterprise',
-    receivedBy: 'Anas All (Owner)',  
+    receivedBy: 'Ahmad Fauzi (Owner)',
     receiptNumber: 'KWT/2026/08/00001',
     createdAt: '2026-08-05T11:00:00.000Z',
   },
@@ -511,7 +511,7 @@ export const initialPayments: Payment[] = [
     accountNumber: 'BCA-8830192833',
     referenceNumber: 'TRF-BCA-1029384',
     notes: 'Pelunasan invoice maintenance Q3',
-    receivedBy: 'Anas All (Owner)',
+    receivedBy: 'Ahmad Fauzi (Owner)',
     receiptNumber: 'KWT/2026/08/00002',
     createdAt: '2026-08-10T14:30:00.000Z',
   },
@@ -618,7 +618,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-001',
     userId: 'usr-001',
-    userName: 'Anas All',
+    userName: 'Ahmad Fauzi',
     userRole: 'owner',
     action: 'create',
     module: 'invoices',
@@ -630,7 +630,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-002',
     userId: 'usr-001',
-    userName: 'Anas All',
+    userName: 'Ahmad Fauzi',
     userRole: 'owner',
     action: 'pay',
     module: 'payments',
@@ -642,7 +642,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-003',
     userId: 'usr-001',
-    userName: 'Anas All',
+    userName: 'Ahmad Fauzi',
     userRole: 'owner',
     action: 'pay',
     module: 'payments',
@@ -654,7 +654,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-004',
     userId: 'usr-001',
-    userName: 'Anas All',
+    userName: 'Ahmad Fauzi',
     userRole: 'owner',
     action: 'create',
     module: 'billing_letters',
@@ -773,6 +773,19 @@ export class StorageService {
   // User Profile
   public static getUser(): UserProfile {
     return this.getItem<UserProfile>(STORAGE_KEYS.USER, initialUser);
+  }
+
+  public static getCurrentUser(): UserProfile {
+    return this.getUser();
+  }
+
+  public static saveUser(user: UserProfile): UserProfile {
+    this.setItem(STORAGE_KEYS.USER, user);
+    return user;
+  }
+
+  public static setCurrentUser(user: UserProfile): UserProfile {
+    return this.saveUser(user);
   }
 
   public static updateUserRole(role: UserProfile['role']): UserProfile {

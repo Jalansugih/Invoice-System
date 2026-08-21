@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StorageService } from '../../lib/storage';
 import { UserRole } from '../../types';
+import { useAuth } from '../auth/Auth';
 import {
   Search,
   Plus,
@@ -11,6 +12,7 @@ import {
   CreditCard,
   MailPlus,
   UserPlus,
+  LogOut,
 } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
 
@@ -35,12 +37,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   onQuickAction,
   onQuickInvoice,
 }) => {
-  const [user, setUser] = useState(StorageService.getUser());
-  const [showQuickMenu, setShowQuickMenu] = useState(false);
+  const { user: authUser, signOut, signInDemoUser } = useAuth();
+  const user = authUser || StorageService.getUser();
 
   const handleRoleChange = (newRole: UserRole) => {
-    const updated = StorageService.updateUserRole(newRole);
-    setUser(updated);
+    signInDemoUser(newRole);
   };
 
   const tabTitles: Record<string, string> = {
@@ -141,6 +142,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             <option value="staff">Staff</option>
           </select>
         </div>
+
+        {/* Sign Out Button */}
+        <button
+          type="button"
+          onClick={() => signOut()}
+          title="Keluar Akun (Sign Out)"
+          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
     </header>
   );

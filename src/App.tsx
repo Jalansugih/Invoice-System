@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StorageService } from './lib/storage';
 import { Invoice, Payment, Customer, BillingLetter } from './types';
+import { useAuth } from './components/auth/Auth';
+import { Login } from './components/auth/Login';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { GlobalSearchModal } from './components/layout/GlobalSearchModal';
@@ -25,6 +27,7 @@ import { AuditTrailView } from './components/audit/AuditTrailView';
 import { SettingsView } from './components/settings/SettingsView';
 
 export default function App() {
+  const { user, loading } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
@@ -84,6 +87,21 @@ export default function App() {
       setIsCustomerModalOpen(true);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white font-sans">
+        <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-xl mb-4 animate-pulse">
+          BF
+        </div>
+        <p className="text-sm font-medium text-slate-300">Memuat sesi akun BillingFlow...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC] text-[#1E293B] font-sans antialiased">
