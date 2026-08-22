@@ -36,6 +36,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // Ensure a row exists in public.profiles for this auth user, linking them
+  // to their organization. Required for Supabase RLS policies (which check
+  // profiles.organization_id) to allow any read/write at all.
+  const ensureProfile = async (sbUser: User) => {
+    try {
+      const meta = sbUser.user_metadata || {};
+      const orgId = meta.organization_id;
+      if (!orgId) return;
+
+      await supabase.from('profiles').upsert({
+        id: sbUser.id,
+        organization_id: orgId,
+        name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'User',
+        email: sbUser.email,
+        role: meta.role || 'owner',
+      });
+    } catch (e) {
+      console.error('Gagal menyiapkan profil organisasi di Supabase:', e);
+    }
+  };
+
   // Helper to map Supabase User metadata to app UserProfile
   const mapSupabaseUserToProfile = (sbUser: User): UserProfile => {
     const meta = sbUser.user_metadata || {};
@@ -69,9 +90,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const profile = mapSupabaseUserToProfile(initialSession.user);
               setUser(profile);
               StorageService.setCurrentUser(profile);
-              
-              // Load latest data from Supabase for this tenant
-              SupabaseService.fetchCustomers(profile.organizationId).catch(console.error);
+
+              // Make sure our profile row exists (needed for RLS), then pull
+              // the latest customers/invoices/payments down from Supabase.
+              await ensureProfile(initialSession.user);
+              await StorageService.hydrateFromSupabase(profile.organizationId);
             } else {
               // Check if demo user was active
               const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
@@ -99,6 +122,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setUser(profile);
                 StorageService.setCurrentUser(profile);
                 localStorage.removeItem(DEMO_STORAGE_KEY);
+                await ensureProfile(newSession.user);
+                await StorageService.hydrateFromSupabase(profile.organizationId);
               } else {
                 setSupabaseUser(null);
                 const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
@@ -202,6 +227,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const profile = mapSupabaseUserToProfile(data.user);
         setUser(profile);
         StorageService.setCurrentUser(profile);
+        await ensureProfile(data.user);
+        await StorageService.hydrateFromSupabase(profile.organizationId);
       }
 
       setLoading(false);
@@ -228,7 +255,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }) => {
     setLoading(true);
     try {
-      const orgId = `org-${Date.now()}`;
+      // Must be a real UUID: it's written straight into Supabase's
+      // organizations.id (uuid column) and referenced by every other table.
+      const orgId = crypto.randomUUID();
       if (organizationName) {
         StorageService.updateOrganization({ name: organizationName });
       }
@@ -271,13 +300,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(profile);
         StorageService.setCurrentUser(profile);
 
-        // Provision initial organization and profile record in Supabase
+        // Organization row must exist first: profiles.organization_id has a
+        // foreign key into it, and RLS on every other table checks profiles.
         await SupabaseService.saveOrganization({
           ...StorageService.getOrganization(),
           id: orgId,
           name: organizationName || 'Perusahaan Baru',
           email,
         });
+
+        // Only works if signUp already returned a live session (i.e. email
+        // confirmation is disabled on the Supabase project). If confirmation
+        // is required, this same call runs again on the user's first real
+        // sign-in via signInWithPassword above.
+        if (data.session) {
+          await ensureProfile(data.user);
+        }
       }
 
       setLoading(false);

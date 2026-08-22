@@ -17,6 +17,7 @@ import {
   ReconciliationSummary,
 } from '../types';
 import { formatDocNumber, getDaysOverdue } from './utils';
+import { SupabaseService } from './supabaseService';
 
 const STORAGE_KEYS = {
   ORGANIZATION: 'billingflow_organization',
@@ -933,6 +934,95 @@ export class StorageService {
     }
   }
 
+  // =========================================================================
+  // SUPABASE CLOUD SYNC (Customers, Invoices, Payments)
+  // =========================================================================
+  // localStorage stays as a fast local cache so every existing component can
+  // keep reading synchronously. Supabase becomes the source of truth via:
+  //  1. hydrateFromSupabase(): pulls fresh data down on login / app load
+  //  2. syncXToSupabase(): pushes every create/update/delete up in the background
+  private static getSyncOrgId(): string | null {
+    const orgId = this.getCurrentUser()?.organizationId;
+    return orgId || null;
+  }
+
+  private static syncCustomerToSupabase(customer: Customer) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return;
+    SupabaseService.saveCustomer(customer, orgId).catch((e) =>
+      console.error('Gagal sinkron pelanggan ke Supabase:', e)
+    );
+  }
+
+  private static syncCustomerDeleteToSupabase(id: string) {
+    SupabaseService.deleteCustomer(id).catch((e) =>
+      console.error('Gagal menghapus pelanggan di Supabase:', e)
+    );
+  }
+
+  private static syncInvoiceToSupabase(invoice: Invoice) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return;
+    SupabaseService.saveInvoice(invoice, orgId).catch((e) =>
+      console.error('Gagal sinkron invoice ke Supabase:', e)
+    );
+  }
+
+  private static syncInvoiceDeleteToSupabase(id: string) {
+    SupabaseService.deleteInvoice(id).catch((e) =>
+      console.error('Gagal menghapus invoice di Supabase:', e)
+    );
+  }
+
+  private static syncPaymentToSupabase(payment: Payment) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return;
+    SupabaseService.savePayment(payment, orgId).catch((e) =>
+      console.error('Gagal sinkron pembayaran ke Supabase:', e)
+    );
+  }
+
+  private static syncPaymentDeleteToSupabase(id: string) {
+    SupabaseService.deletePayment(id).catch((e) =>
+      console.error('Gagal menghapus pembayaran di Supabase:', e)
+    );
+  }
+
+  /**
+   * Pulls customers, invoices, and payments down from Supabase and overwrites
+   * the local cache, so a fresh browser/device sees real data instead of the
+   * seeded demo dataset. Only overwrites once we've confirmed we're actually
+   * connected & authenticated, so a transient network hiccup never wipes the
+   * local cache back to empty.
+   */
+  public static async hydrateFromSupabase(organizationId?: string | null): Promise<boolean> {
+    try {
+      const status = await SupabaseService.checkConnection();
+      if (!status.connected || !status.authenticated) {
+        return false;
+      }
+
+      const orgId = organizationId || this.getSyncOrgId();
+      if (!orgId) return false;
+
+      const [customers, invoices, payments] = await Promise.all([
+        SupabaseService.fetchCustomers(orgId),
+        SupabaseService.fetchInvoices(orgId),
+        SupabaseService.fetchPayments(orgId),
+      ]);
+
+      localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
+      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
+      localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
+      this.recalculateCustomerBalances();
+      this.notify();
+      return true;
+    } catch (e) {
+      console.error('Gagal memuat data dari Supabase, memakai cache lokal:', e);
+      return false;
+    }
+  }
+
   // Organization
   public static getOrganization(): Organization {
     return this.getItem<Organization>(STORAGE_KEYS.ORGANIZATION, initialOrganization);
@@ -1021,6 +1111,7 @@ export class StorageService {
     }
 
     this.setItem(STORAGE_KEYS.CUSTOMERS, customers);
+    this.syncCustomerToSupabase(customer);
     return customer;
   }
 
@@ -1032,6 +1123,7 @@ export class StorageService {
     const filtered = customers.filter((c) => c.id !== id);
     this.setItem(STORAGE_KEYS.CUSTOMERS, filtered);
     this.addAuditLog('delete', 'customers', id, target.name, `Menghapus pelanggan: ${target.name}`);
+    this.syncCustomerDeleteToSupabase(id);
     return true;
   }
 
@@ -1245,6 +1337,7 @@ export class StorageService {
 
     this.setItem(STORAGE_KEYS.INVOICES, invoices);
     this.recalculateCustomerBalances();
+    this.syncInvoiceToSupabase(invoice);
     return invoice;
   }
 
@@ -1265,6 +1358,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.INVOICES, invoices);
     this.addAuditLog('status_change', 'invoices', id, inv.invoiceNumber, `Mengubah status invoice ${inv.invoiceNumber} dari ${oldStatus} ke ${status}`);
     this.recalculateCustomerBalances();
+    this.syncInvoiceToSupabase(inv);
     return inv;
   }
 
@@ -1283,6 +1377,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.INVOICES, filtered);
     this.addAuditLog('delete', 'invoices', id, target.invoiceNumber, `Menghapus invoice: ${target.invoiceNumber}`);
     this.recalculateCustomerBalances();
+    this.syncInvoiceDeleteToSupabase(id);
     return true;
   }
 
@@ -1391,6 +1486,7 @@ export class StorageService {
     });
 
     this.recalculateCustomerBalances();
+    this.syncPaymentToSupabase(payment);
     return payment;
   }
 
@@ -1418,6 +1514,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.PAYMENTS, filtered);
     this.addAuditLog('delete', 'payments', id, target.receiptNumber, `Membatalkan kuitansi pembayaran: ${target.receiptNumber}`);
     this.recalculateCustomerBalances();
+    this.syncPaymentDeleteToSupabase(id);
     return true;
   }
 
@@ -1684,6 +1781,8 @@ export class StorageService {
     const invoices = this.getInvoices();
     const payments = this.getPayments();
 
+    const changedCustomers: Customer[] = [];
+
     const updated = customers.map((customer) => {
       const custInvoices = invoices.filter((i) => i.customerId === customer.id && i.status !== 'cancelled');
       const custPayments = payments.filter((p) => p.customerId === customer.id);
@@ -1692,15 +1791,28 @@ export class StorageService {
       const totalPaid = custPayments.reduce((sum, p) => sum + p.amount, 0);
       const totalOutstanding = Math.max(0, totalInvoiced - totalPaid);
 
-      return {
+      const next = {
         ...customer,
         totalInvoiced,
         totalPaid,
         totalOutstanding,
       };
+
+      if (
+        customer.totalInvoiced !== totalInvoiced ||
+        customer.totalPaid !== totalPaid ||
+        customer.totalOutstanding !== totalOutstanding
+      ) {
+        changedCustomers.push(next);
+      }
+
+      return next;
     });
 
     this.setItem(STORAGE_KEYS.CUSTOMERS, updated);
+    // Push only the customers whose running balance actually changed, so
+    // Supabase reflects the same up-to-date totals shown locally.
+    changedCustomers.forEach((c) => this.syncCustomerToSupabase(c));
   }
 
   // Dashboard Stats Aggregator

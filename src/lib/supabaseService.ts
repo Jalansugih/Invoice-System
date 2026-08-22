@@ -581,6 +581,17 @@ export class SupabaseService {
     }
   }
 
+  public static async deletePayment(paymentId: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { error } = await supabase.from('payments').delete().eq('id', paymentId);
+      return !error;
+    } catch (e) {
+      console.error('Supabase deletePayment error:', e);
+      return false;
+    }
+  }
+
   // =========================================================================
   // 6. BILLING LETTERS (SURAT TAGIHAN)
   // =========================================================================
