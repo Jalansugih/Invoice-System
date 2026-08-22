@@ -13,6 +13,8 @@ import {
   MailPlus,
   UserPlus,
   LogOut,
+  HelpCircle,
+  BookOpen,
 } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
 
@@ -25,6 +27,7 @@ export interface NavbarProps {
   onNavigateInvoice?: (id: string) => void;
   onQuickAction?: (action: 'new_invoice' | 'new_payment' | 'new_letter' | 'new_customer') => void;
   onQuickInvoice?: () => void;
+  onOpenGuide?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -36,6 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigateInvoice,
   onQuickAction,
   onQuickInvoice,
+  onOpenGuide,
 }) => {
   const { user: authUser, signOut, signInDemoUser } = useAuth();
   const user = authUser || StorageService.getUser();
@@ -142,8 +146,22 @@ export const Navbar: React.FC<NavbarProps> = ({
             <option value="admin">Admin</option>
             <option value="finance">Finance</option>
             <option value="staff">Staff</option>
+            <option value="viewer">Viewer (Read-Only)</option>
           </select>
         </div>
+
+        {/* Help / Panduan Penggunaan Button */}
+        {onOpenGuide && (
+          <button
+            id="btn-navbar-guide"
+            onClick={onOpenGuide}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 text-xs font-semibold text-slate-700 transition-colors shadow-2xs cursor-pointer"
+            title="Buka Petunjuk Penggunaan Aplikasi"
+          >
+            <HelpCircle className="w-4 h-4 text-blue-600" />
+            <span className="hidden md:inline">Panduan</span>
+          </button>
+        )}
 
         {/* Sign Out Button */}
         <button

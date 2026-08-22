@@ -170,9 +170,9 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               INFORMASI KONTAK PIC:
             </span>
-            <p className="text-xs font-semibold text-slate-900 mt-1">{invoice.customerPic || invoice.customerName || '-'}</p>
-            <p className="text-xs text-slate-600">{invoice.customerEmail || '-'}</p>
-            <p className="text-xs text-slate-600">{invoice.customerPhone || '-'}</p>  
+            <p className="text-xs font-semibold text-slate-900 mt-1">{invoice.customerPic}</p>
+            <p className="text-xs text-slate-600">{invoice.customerEmail}</p>
+            <p className="text-xs text-slate-600">{invoice.customerPhone}</p>
           </div>
         </div>
 
@@ -335,17 +335,19 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
             </div>
 
             <div>
-              <p className="text-xs font-bold text-slate-900 underline uppercase">
-                {org.directorName || 'Anas Abdul Latif, S.Pd., SE., M.M.'}
+              <p className="text-xs font-bold text-slate-900 underline uppercase tracking-tight">
+                {org.signatureName || org.directorName || 'Finance & Accounting Manager'}
               </p>
-              <p className="text-[10px] text-slate-500">Finance & Billing Department</p>
+              <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+                {org.signatureRole || 'Finance & Accounting Manager'}
+              </p>
             </div>
           </div>
         </div>
 
         {/* Document Footer Verification */}
         <div className="text-center text-[10px] text-slate-400 border-t border-slate-100 pt-4 mt-6 print:border-slate-200">
-          Dokumen ini digenerate secara digital oleh sistem Rajakas.id Enterprise. dan Sah, Mengikat secara hukum.
+          Dokumen ini digenerate secara digital oleh sistem Billing Rajakas.id, Sah dan mengikat secara hukum.
         </div>
       </div>
     </div>

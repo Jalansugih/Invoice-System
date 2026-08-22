@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { Session, User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { StorageService } from '../../lib/storage';
+import { SupabaseService } from '../../lib/supabaseService';
 import { UserProfile, UserRole } from '../../types';
 
 interface AuthContextType {
@@ -11,9 +12,18 @@ interface AuthContextType {
   loading: boolean;
   isConfigured: boolean;
   signInWithPassword: (credentials: { email: string; password: string }) => Promise<{ error: Error | null; data: any }>;
-  signUpWithPassword: (credentials: { email: string; password: string; name: string; role?: UserRole }) => Promise<{ error: Error | null; data: any }>;
+  signUpWithPassword: (credentials: {
+    email: string;
+    password: string;
+    name: string;
+    role?: UserRole;
+    organizationName?: string;
+  }) => Promise<{ error: Error | null; data: any }>;
+  resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   signInDemoUser: (role?: UserRole) => void;
+  updateUserRole: (role: UserRole) => void;
+  canPerformAction: (action: 'view' | 'create_draft' | 'edit_all' | 'record_payment' | 'delete_records' | 'org_settings') => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,9 +43,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       id: sbUser.id,
       name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'User',
       email: sbUser.email || '',
-      role: (meta.role as UserRole) || 'admin',
+      role: (meta.role as UserRole) || 'owner',
       avatarUrl: meta.avatar_url,
-      organizationId: meta.organization_id || 'org-1',
+      organizationId: meta.organization_id || 'org-001',
     };
   };
 
@@ -45,7 +55,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const initializeAuth = async () => {
       try {
         if (isSupabaseConfigured) {
-          // 1. Retrieve current active session via getSession()
+          // 1. Retrieve current active session
           const { data: { session: initialSession }, error } = await supabase.auth.getSession();
           
           if (error) {
@@ -53,16 +63,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
 
           if (isMounted) {
-            if (initialSession) {
+            if (initialSession?.user) {
               setSession(initialSession);
               setSupabaseUser(initialSession.user);
-              setUser(mapSupabaseUserToProfile(initialSession.user));
+              const profile = mapSupabaseUserToProfile(initialSession.user);
+              setUser(profile);
+              StorageService.setCurrentUser(profile);
+              
+              // Load latest data from Supabase for this tenant
+              SupabaseService.fetchCustomers(profile.organizationId).catch(console.error);
             } else {
               // Check if demo user was active
               const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
               if (savedDemo) {
                 try {
-                  setUser(JSON.parse(savedDemo));
+                  const parsed = JSON.parse(savedDemo);
+                  setUser(parsed);
+                  StorageService.setCurrentUser(parsed);
                 } catch {
                   setUser(null);
                 }
@@ -70,22 +87,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
 
-          // 2. Listen to real-time auth state changes via onAuthStateChange()
+          // 2. Listen to real-time auth state changes
           const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, newSession) => {
+            async (_event, newSession) => {
               if (!isMounted) return;
               
               setSession(newSession);
               if (newSession?.user) {
                 setSupabaseUser(newSession.user);
-                setUser(mapSupabaseUserToProfile(newSession.user));
+                const profile = mapSupabaseUserToProfile(newSession.user);
+                setUser(profile);
+                StorageService.setCurrentUser(profile);
                 localStorage.removeItem(DEMO_STORAGE_KEY);
               } else {
                 setSupabaseUser(null);
                 const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
                 if (savedDemo) {
                   try {
-                    setUser(JSON.parse(savedDemo));
+                    const parsed = JSON.parse(savedDemo);
+                    setUser(parsed);
+                    StorageService.setCurrentUser(parsed);
                   } catch {
                     setUser(null);
                   }
@@ -105,15 +126,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
           if (savedDemo) {
             try {
-              setUser(JSON.parse(savedDemo));
+              const parsed = JSON.parse(savedDemo);
+              setUser(parsed);
+              StorageService.setCurrentUser(parsed);
             } catch {
-              // fallback default user
               const defaultUser = StorageService.getCurrentUser();
               setUser(defaultUser);
               localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(defaultUser));
             }
           } else {
-            // Default demo account
             const defaultUser = StorageService.getCurrentUser();
             setUser(defaultUser);
             localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(defaultUser));
@@ -134,20 +155,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
-  // Supabase signInWithPassword implementation
+  // Supabase signInWithPassword
   const signInWithPassword = async ({ email, password }: { email: string; password: string }) => {
     setLoading(true);
     try {
       if (!isSupabaseConfigured) {
-        // Fallback for local demo authentication
-        const existingUsers = [
-          { email: 'admin@billingflow.id', name: 'Budi Santoso', role: 'admin' as UserRole },
-          { email: 'finance@billingflow.id', name: 'Siti Rahma', role: 'finance' as UserRole },
-          { email: 'staff@billingflow.id', name: 'Anas All', role: 'staff' as UserRole },
-        ];
+        const existingUsers: Record<string, { name: string; role: UserRole }> = {
+          'owner@billingflow.id': { name: 'Ir. Ahmad Fauzi (Direktur)', role: 'owner' },
+          'admin@billingflow.id': { name: 'Budi Santoso (Admin Operasional)', role: 'admin' },
+          'finance@billingflow.id': { name: 'Siti Rahma (Finance Accounting)', role: 'finance' },
+          'staff@billingflow.id': { name: 'Rian Pratama (Staff Penagihan)', role: 'staff' },
+          'viewer@billingflow.id': { name: 'Dewi Lestari (Auditor Eksternal)', role: 'viewer' },
+        };
 
-        const match = existingUsers.find(u => u.email.toLowerCase() === email.toLowerCase()) || {
-          email,
+        const match = existingUsers[email.toLowerCase()] || {
           name: email.split('@')[0] || 'User',
           role: 'admin' as UserRole,
         };
@@ -155,9 +176,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const demoProfile: UserProfile = {
           id: `usr-${Date.now()}`,
           name: match.name,
-          email: match.email,
+          email,
           role: match.role,
-          organizationId: 'org-1',
+          organizationId: 'org-001',
         };
 
         setUser(demoProfile);
@@ -191,27 +212,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Supabase signUp implementation
+  // Supabase signUpWithPassword
   const signUpWithPassword = async ({
     email,
     password,
     name,
-    role = 'admin',
+    role = 'owner',
+    organizationName,
   }: {
     email: string;
     password: string;
     name: string;
     role?: UserRole;
+    organizationName?: string;
   }) => {
     setLoading(true);
     try {
+      const orgId = `org-${Date.now()}`;
+      if (organizationName) {
+        StorageService.updateOrganization({ name: organizationName });
+      }
+
       if (!isSupabaseConfigured) {
         const demoProfile: UserProfile = {
           id: `usr-${Date.now()}`,
           name,
           email,
           role,
-          organizationId: 'org-1',
+          organizationId: orgId,
         };
         setUser(demoProfile);
         localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoProfile));
@@ -227,6 +255,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           data: {
             full_name: name,
             role,
+            organization_id: orgId,
+            organization_name: organizationName || 'Perusahaan Baru',
           },
         },
       });
@@ -240,6 +270,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const profile = mapSupabaseUserToProfile(data.user);
         setUser(profile);
         StorageService.setCurrentUser(profile);
+
+        // Provision initial organization and profile record in Supabase
+        await SupabaseService.saveOrganization({
+          ...StorageService.getOrganization(),
+          id: orgId,
+          name: organizationName || 'Perusahaan Baru',
+          email,
+        });
       }
 
       setLoading(false);
@@ -250,7 +288,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Supabase signOut implementation
+  // Reset Password for Email
+  const resetPasswordForEmail = async (email: string) => {
+    if (!isSupabaseConfigured) {
+      return { error: null };
+    }
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      return { error };
+    } catch (err: any) {
+      return { error: err };
+    }
+  };
+
+  // Supabase signOut
   const signOut = async () => {
     setLoading(true);
     try {
@@ -268,13 +321,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Fast switch demo role for quick evaluation
+  // Fast switch demo role
   const signInDemoUser = (role: UserRole = 'admin') => {
     const demoMap: Record<UserRole, { name: string; email: string }> = {
-      owner: { name: 'Direktur Utama', email: 'owner@billingflow.id' },
+      owner: { name: 'Ir. Ahmad Fauzi', email: 'owner@billingflow.id' },
       admin: { name: 'Budi Santoso (Admin)', email: 'admin@billingflow.id' },
       finance: { name: 'Siti Rahma (Finance)', email: 'finance@billingflow.id' },
-      staff: { name: 'Admin (Staff)', email: 'staff@billingflow.id' },
+      staff: { name: 'Rian Pratama (Staff Penagihan)', email: 'staff@billingflow.id' },
+      viewer: { name: 'Dewi Lestari (Auditor/Viewer)', email: 'viewer@billingflow.id' },
     };
 
     const target = demoMap[role] || demoMap.admin;
@@ -283,12 +337,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       name: target.name,
       email: target.email,
       role,
-      organizationId: 'org-1',
+      organizationId: 'org-001',
     };
 
     setUser(demoProfile);
     localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoProfile));
     StorageService.setCurrentUser(demoProfile);
+  };
+
+  // Update role dynamically
+  const updateUserRole = (role: UserRole) => {
+    if (!user) return;
+    const updated = { ...user, role };
+    setUser(updated);
+    StorageService.setCurrentUser(updated);
+    if (!isSupabaseConfigured) {
+      localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(updated));
+    }
+  };
+
+  // Fine-grained Role Permission Evaluator
+  const canPerformAction = (action: 'view' | 'create_draft' | 'edit_all' | 'record_payment' | 'delete_records' | 'org_settings'): boolean => {
+    if (!user) return false;
+    const { role } = user;
+
+    switch (action) {
+      case 'view':
+        return true; // Everyone can view
+      case 'create_draft':
+        return ['owner', 'admin', 'finance', 'staff'].includes(role);
+      case 'edit_all':
+        return ['owner', 'admin', 'finance'].includes(role);
+      case 'record_payment':
+        return ['owner', 'admin', 'finance'].includes(role);
+      case 'delete_records':
+        return ['owner', 'admin'].includes(role);
+      case 'org_settings':
+        return ['owner', 'admin'].includes(role);
+      default:
+        return false;
+    }
   };
 
   return (
@@ -301,8 +389,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isConfigured: isSupabaseConfigured,
         signInWithPassword,
         signUpWithPassword,
+        resetPasswordForEmail,
         signOut,
         signInDemoUser,
+        updateUserRole,
+        canPerformAction,
       }}
     >
       {children}
@@ -318,5 +409,4 @@ export const useAuth = (): AuthContextType => {
   return context;
 };
 
-// Also export Auth as a convenience alias
 export const Auth = AuthProvider;

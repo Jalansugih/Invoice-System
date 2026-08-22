@@ -27,6 +27,7 @@ import { DocumentHub } from './components/documents/DocumentHub';
 import { FinancialReportsView } from './components/reports/FinancialReportsView';
 import { AuditTrailView } from './components/audit/AuditTrailView';
 import { SettingsView } from './components/settings/SettingsView';
+import { UserGuideModal } from './components/guide/UserGuideModal';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -34,6 +35,19 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState<boolean>(false);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
+
+  // Auto open guide on very first time use
+  useEffect(() => {
+    try {
+      const hasSeen = localStorage.getItem('billingflow_has_seen_guide');
+      if (!hasSeen) {
+        setIsGuideModalOpen(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Sub-detail / Print views
   const [viewingInvoiceId, setViewingInvoiceId] = useState<string | null>(null);
@@ -115,6 +129,7 @@ export default function App() {
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        onOpenGuide={() => setIsGuideModalOpen(true)}
       />
 
       {/* Main App Canvas */}
@@ -134,6 +149,7 @@ export default function App() {
           }}
           onQuickAction={handleQuickAction}
           onQuickInvoice={() => handleQuickAction('new_invoice')}
+          onOpenGuide={() => setIsGuideModalOpen(true)}
         />
 
         {/* Scrollable Page Body */}
@@ -199,6 +215,7 @@ export default function App() {
                       setLetterTargetInvoice(inv);
                       setIsLetterModalOpen(true);
                     }}
+                    onOpenGuide={() => setIsGuideModalOpen(true)}
                   />
                 )}
 
@@ -369,6 +386,13 @@ export default function App() {
         onSuccess={() => {
           setCurrentTab('customers');
         }}
+      />
+
+      {/* Interactive First-Time & On-Demand User Guide Modal */}
+      <UserGuideModal
+        isOpen={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+        onNavigateToTab={(tab) => handleSelectTab(tab)}
       />
     </div>
   );

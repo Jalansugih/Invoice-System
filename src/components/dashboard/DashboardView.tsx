@@ -21,6 +21,9 @@ import {
   Building2,
   CheckCircle2,
   ChevronRight,
+  BookOpen,
+  HelpCircle,
+  Sparkles,
 } from 'lucide-react';
 import { formatRupiah, formatIndoDate } from '../../lib/utils';
 
@@ -30,6 +33,7 @@ export interface DashboardViewProps {
   onViewInvoice: (id: string) => void;
   onRecordPaymentForInvoice: (invoice: Invoice) => void;
   onCreateLetterForInvoice: (invoice: Invoice) => void;
+  onOpenGuide?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -38,6 +42,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onViewInvoice,
   onRecordPaymentForInvoice,
   onCreateLetterForInvoice,
+  onOpenGuide,
 }) => {
   const [stats, setStats] = useState(StorageService.getDashboardStats());
   const [invoices, setInvoices] = useState(StorageService.getInvoices());
@@ -136,6 +141,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           >
             Catat Kas Masuk
           </Button>
+
+          {onOpenGuide && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenGuide}
+              leftIcon={<BookOpen className="w-4 h-4 text-blue-600" />}
+              className="text-blue-700 bg-blue-50/50 hover:bg-blue-100/70 border-blue-200 font-semibold"
+            >
+              Petunjuk Penggunaan
+            </Button>
+          )}
         </div>
       </div>
 

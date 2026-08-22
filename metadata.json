@@ -1,6 +1,6 @@
 {
   "name": "Remix Remix BillingFlow",
-  "description": "Aplikasi Invoice & Document Billing Management profesional dengan fitur rekonsiliasi bank otomatis, verifikasi mutasi pembayaran rekening koran, faktur, surat tagihan, dan laporan keuangan perusahaan.",
+  "description": "Sistem Faktur, Penagihan & Keuangan Multi-Tenant Enterprise dengan backend Supabase PostgreSQL, Row Level Security (RLS), rekonsiliasi kas bank otomatis, dan kepatuhan pajak DJP.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

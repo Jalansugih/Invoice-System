@@ -66,7 +66,7 @@ export const initialOrganization: Organization = {
       isDefault: false,
     },
   ],
-  signatureName: 'Anas Abdul Latif',
+  signatureName: 'Budi Hartono, SE, Ak., CA',
   signatureRole: 'Direktur Keuangan (CFO)',
   signatureImage: '',
   defaultTaxRate: 11, // PPN 11%
@@ -80,10 +80,10 @@ export const initialOrganization: Organization = {
 
 export const initialUser: UserProfile = {
   id: 'usr-001',
-  name: 'Anas Allah',
-  email: 'anas@billingflow.id',
+  name: 'Ahmad Fauzi, S.Kom',
+  email: 'fauzi@billingflow.id',
   role: 'owner',
-  avatarUrl: '/foto-conak.jpg',
+  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
   organizationId: 'org-001',
 };
 
@@ -498,7 +498,7 @@ export const initialPayments: Payment[] = [
     accountNumber: 'BCA-8830192833',
     referenceNumber: 'TRF-BCA-9812948',
     notes: 'Pembayaran DP 50% Kontrak Cloud Enterprise',
-    receivedBy: 'Anas All (Owner)',
+    receivedBy: 'Ahmad Fauzi (Owner)',
     receiptNumber: 'KWT/2026/08/00001',
     createdAt: '2026-08-05T11:00:00.000Z',
   },
@@ -516,7 +516,7 @@ export const initialPayments: Payment[] = [
     accountNumber: 'BCA-8830192833',
     referenceNumber: 'TRF-BCA-1029384',
     notes: 'Pelunasan invoice maintenance Q3',
-    receivedBy: 'Anas All (Owner)',
+    receivedBy: 'Ahmad Fauzi (Owner)',
     receiptNumber: 'KWT/2026/08/00002',
     createdAt: '2026-08-10T14:30:00.000Z',
   },
@@ -623,7 +623,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-001',
     userId: 'usr-001',
-    userName: 'Anas All',
+    userName: 'Ahmad Fauzi',
     userRole: 'owner',
     action: 'create',
     module: 'invoices',
@@ -635,7 +635,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-002',
     userId: 'usr-001',
-    userName: 'Anas All ',
+    userName: 'Ahmad Fauzi',
     userRole: 'owner',
     action: 'pay',
     module: 'payments',
@@ -647,7 +647,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-003',
     userId: 'usr-001',
-    userName: 'Anas All',
+    userName: 'Ahmad Fauzi',
     userRole: 'owner',
     action: 'pay',
     module: 'payments',
@@ -659,7 +659,7 @@ export const initialAuditLogs: AuditLog[] = [
   {
     id: 'audit-004',
     userId: 'usr-001',
-    userName: 'Anas All',
+    userName: 'Ahmad Fauzi',
     userRole: 'owner',
     action: 'create',
     module: 'billing_letters',
@@ -782,7 +782,7 @@ export const initialBankTransactions: BankTransaction[] = [
     matchConfidence: 100,
     matchReason: 'Terverifikasi & cocok dengan Kuitansi KWT/2026/08/00002',
     reconciledAt: '2026-08-10T14:30:00.000Z',
-    reconciledBy: 'Anas All',
+    reconciledBy: 'Ahmad Fauzi',
   },
   {
     id: 'bt-004',
@@ -803,7 +803,7 @@ export const initialBankTransactions: BankTransaction[] = [
     matchConfidence: 100,
     matchReason: 'Terverifikasi & cocok dengan Kuitansi KWT/2026/08/00001',
     reconciledAt: '2026-08-05T11:00:00.000Z',
-    reconciledBy: 'Anas All',
+    reconciledBy: 'Ahmad Fauzi',
   },
   {
     id: 'bt-005',

@@ -187,7 +187,7 @@ export const AgingReceivablesChart: React.FC<AgingReceivablesChartProps> = ({ ag
             <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
               Total Piutang
             </span>
-            <span className="text-xs sm:text-[13px] font-bold text-slate-800 font-mono tracking-tight leading-tight mt-0.5">
+            <span className="text-xs sm:text-[11px] font-bold text-slate-800 font-mono tracking-tight leading-tight mt-0.5">
               {formatRupiah(totalAmount)}
             </span>
             <span className="text-[10px] font-medium text-slate-400 mt-0.5">

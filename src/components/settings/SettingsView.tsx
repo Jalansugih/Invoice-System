@@ -1,7 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StorageService } from '../../lib/storage';
 import { Organization, BankAccount } from '../../types';
 import { SUPABASE_SQL_MIGRATION } from '../../lib/supabaseMigration';
+import { SupabaseService, MigrationResult } from '../../lib/supabaseService';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
@@ -24,6 +26,13 @@ import {
   X,
   FileText,
   Sparkles,
+  Layers,
+  Users,
+  Lock,
+  ArrowRight,
+  AlertCircle,
+  Server,
+  CloudUpload,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -34,13 +43,79 @@ export const SettingsView: React.FC = () => {
   const [isDraggingLogo, setIsDraggingLogo] = useState(false);
   const [isDraggingSignature, setIsDraggingSignature] = useState(false);
   const [previewDocType, setPreviewDocType] = useState<'invoice' | 'letter' | 'receipt'>('invoice');
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationResult, setMigrationResult] = useState<MigrationResult | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<{
+    connected: boolean;
+    authenticated: boolean;
+    userEmail?: string;
+    organizationId?: string;
+    error?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'database') {
+      SupabaseService.checkConnection().then(setConnectionStatus);
+    }
+  }, [activeTab]);
+
+  const handleRunMigration = async () => {
+    setIsMigrating(true);
+    setMigrationResult(null);
+
+    try {
+      const payload = {
+        organization: StorageService.getOrganization(),
+        customers: StorageService.getCustomers(),
+        products: StorageService.getProducts(),
+        invoices: StorageService.getInvoices(),
+        payments: StorageService.getPayments(),
+        billingLetters: StorageService.getBillingLetters(),
+        documents: StorageService.getDocuments(),
+        auditLogs: StorageService.getAuditLogs(),
+        bankTransactions: StorageService.getBankTransactions(),
+      };
+
+      const result = await SupabaseService.migrateLocalStorageToSupabase(payload);
+      setMigrationResult(result);
+    } catch (err: any) {
+      setMigrationResult({
+        success: false,
+        message: err.message || 'Gagal menjalankan migrasi.',
+        counts: {
+          organizations: 0,
+          customers: 0,
+          products: 0,
+          invoices: 0,
+          invoiceItems: 0,
+          payments: 0,
+          billingLetters: 0,
+          documents: 0,
+          auditLogs: 0,
+          bankTransactions: 0,
+        },
+        errors: [err.message],
+      });
+    } finally {
+      setIsMigrating(false);
+    }
+  };
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveCompany = (e: React.FormEvent) => {
     e.preventDefault();
-    StorageService.saveOrganization(org);
+    const updatedOrg = {
+      ...org,
+      signatureName: org.signatureName || org.directorName || '',
+      directorName: org.signatureName || org.directorName || '',
+    };
+    setOrg(updatedOrg);
+    StorageService.saveOrganization(updatedOrg);
+    SupabaseService.saveOrganization(updatedOrg).catch((err) => {
+      console.warn('Supabase organization save warning:', err);
+    });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
   };
@@ -496,19 +571,114 @@ export const SettingsView: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="mt-3 text-[10px] text-slate-400 italic text-center">
+                  <div className="mt-6 text-[10px] text-slate-400 italic text-center py-2 bg-slate-50 rounded border border-dashed border-slate-200">
                     [ Konten rincian item transaksi dokumen dicetak di bawah garis kop surat ini ]
+                  </div>
+
+                  {/* Simulated Paper Signature Footer */}
+                  <div className="mt-8 pt-4 border-t border-dashed border-slate-300 flex justify-end">
+                    <div className="text-right space-y-1 max-w-[240px]">
+                      <p className="text-[10px] text-slate-500">{org.city || 'Jakarta'}, 22 Agustus 2026</p>
+                      <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight">{org.name || 'PT Nama Perusahaan'}</p>
+
+                      <div className="h-14 flex items-center justify-end my-1">
+                        {org.signatureImage ? (
+                          <img
+                            src={org.signatureImage}
+                            alt="Cap & Tanda Tangan"
+                            className="max-h-12 max-w-[140px] object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="border border-dashed border-slate-300 rounded px-3 py-1 text-[9px] text-slate-400">
+                            [ Cap & Tanda Tangan ]
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-bold text-slate-900 underline uppercase tracking-tight">
+                          {org.signatureName || org.directorName || 'Nama Penandatangan'}
+                        </p>
+                        <p className="text-[10px] text-slate-600 font-medium">
+                          {org.signatureRole || 'Jabatan / Posisi Penandatangan'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 2. Text Fields for Company Identity */}
+          {/* 2. Signer Configuration Section (Nama, Jabatan, & Otorisasi) */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-5 shadow-2xs">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <FileSignature className="w-4 h-4 text-emerald-600" />
+                Pejabat Penandatangan Dokumen Resmi (Nama & Jabatan)
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Atur nama dan jabatan pejabat berwenang yang akan dicantumkan secara otomatis pada kolom tanda tangan di seluruh dokumen resmi (Faktur/Invoice, Surat Tagihan, Kuitansi, dan Laporan).
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Nama Lengkap Penandatangan"
+                placeholder="cth. Budi Hartono, SE, Ak., CA"
+                value={org.signatureName || org.directorName || ''}
+                onChange={(e) => setOrg({ ...org, signatureName: e.target.value, directorName: e.target.value })}
+                helperText="Tertera pada teks bergaris bawah penandatangan dokumen"
+                required
+              />
+              <Input
+                label="Jabatan Penandatangan (Job Title)"
+                placeholder="cth. Direktur Keuangan (CFO) / Finance Manager"
+                value={org.signatureRole || ''}
+                onChange={(e) => setOrg({ ...org, signatureRole: e.target.value })}
+                helperText="Tertera persis di bawah nama penandatangan di seluruh dokumen"
+                required
+              />
+            </div>
+
+            {/* Quick Position Presets */}
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+              <span className="text-[11px] font-semibold text-slate-600 block">
+                Pilihan Cepat Template Jabatan:
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  'Direktur Keuangan (CFO)',
+                  'Finance & Accounting Manager',
+                  'Direktur Utama (CEO)',
+                  'Head of Finance & Billing',
+                  'Finance & Treasury Officer',
+                  'Kuasa Direksi',
+                  'General Manager',
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setOrg({ ...org, signatureRole: preset })}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-all cursor-pointer ${
+                      org.signatureRole === preset
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs font-semibold'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-blue-50/50'
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Text Fields for Company Identity & Tax Defaults */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-6 shadow-2xs">
             <div className="border-b border-slate-100 pb-4">
-              <h3 className="text-sm font-bold text-slate-900">Rincian Teks Identitas Perusahaan</h3>
-              <p className="text-xs text-slate-500">Informasi ini otomatis dicantumkan pada teks kop surat dan penandatangan dokumen.</p>
+              <h3 className="text-sm font-bold text-slate-900">Rincian Teks Identitas Perusahaan & Default Perpajakan</h3>
+              <p className="text-xs text-slate-500">Informasi ini otomatis dicantumkan pada teks kop surat, footer, dan default kalkulasi perpajakan.</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -574,13 +744,7 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            <div className="border-t border-slate-100 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input
-                label="Nama Pejabat Penandatangan"
-                value={org.directorName || org.signatureName || ''}
-                onChange={(e) => setOrg({ ...org, directorName: e.target.value, signatureName: e.target.value })}
-                helperText="Tertera pada kolom tanda tangan dokumen resmi"
-              />
+            <div className="border-t border-slate-100 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Default Termin Jatuh Tempo (Hari)"
                 type="number"
@@ -741,32 +905,248 @@ export const SettingsView: React.FC = () => {
         </form>
       )}
 
-      {/* Tab 4: Database & Supabase SQL */}
+      {/* Tab 4: Database & Supabase Migration Hub */}
       {activeTab === 'database' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-6 shadow-2xs">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                <h3 className="text-sm font-bold text-slate-900">Supabase & PostgreSQL Production Schema</h3>
+        <div className="space-y-6">
+          {/* Top Status & Cloud Connection Header */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Pusat Migrasi Data & Single Source of Truth Supabase
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Migrasikan seluruh data transaksi lokal ke PostgreSQL Supabase & kelola isolasi Row Level Security (RLS).
+                    </p>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Seluruh skrip DDL SQL lengkap dengan tabel relasional, triggers saldo otomatis, RLS policies, dan index.
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => SupabaseService.checkConnection().then(setConnectionStatus)}
+                  leftIcon={<RefreshCw className="w-4 h-4" />}
+                >
+                  Tes Koneksi
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={handleRunMigration}
+                  isLoading={isMigrating}
+                  leftIcon={<CloudUpload className="w-4 h-4" />}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  Sinkron / Migrasi ke Supabase
+                </Button>
+              </div>
+            </div>
+
+            {/* Connection Info Banner */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Status Cloud Database</span>
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      isSupabaseConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                    }`}
+                  />
+                </div>
+                <div className="text-sm font-bold text-slate-900">
+                  {isSupabaseConfigured ? 'Supabase PostgreSQL Aktif' : 'Mode Offline / Local DB'}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  {isSupabaseConfigured
+                    ? 'Endpoint & API key terpasang di workspace.'
+                    : 'Kredensial Supabase berjalan via adapter lokal.'}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Row Level Security (RLS)</span>
+                </div>
+                <div className="text-sm font-bold text-slate-900">Isolasi Multi-Tenant Enforced</div>
+                <div className="text-xs text-slate-500 mt-1">
+                  Semua tabel terisolasi via <code>organization_id</code>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Tenant ID Aktif</span>
+                </div>
+                <div className="text-sm font-mono font-bold text-purple-700 truncate">
+                  {org.id || 'org-001'}
+                </div>
+                <div className="text-xs text-slate-500 mt-1 truncate">{org.name}</div>
+              </div>
+            </div>
+
+            {/* Migration Result Banner */}
+            {migrationResult && (
+              <div
+                className={`p-4 rounded-xl border ${
+                  migrationResult.success
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-rose-50 border-rose-200 text-rose-900'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {migrationResult.success ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-1">
+                    <div className="text-sm font-bold">{migrationResult.message}</div>
+                    {migrationResult.success && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs text-emerald-800 font-medium">
+                        <div className="p-2 bg-white/70 rounded-lg border border-emerald-200">
+                          📄 Faktur: <strong>{migrationResult.counts.invoices}</strong> ({migrationResult.counts.invoiceItems} baris)
+                        </div>
+                        <div className="p-2 bg-white/70 rounded-lg border border-emerald-200">
+                          👥 Pelanggan: <strong>{migrationResult.counts.customers}</strong>
+                        </div>
+                        <div className="p-2 bg-white/70 rounded-lg border border-emerald-200">
+                          📦 Produk: <strong>{migrationResult.counts.products}</strong>
+                        </div>
+                        <div className="p-2 bg-white/70 rounded-lg border border-emerald-200">
+                          💳 Pembayaran: <strong>{migrationResult.counts.payments}</strong>
+                        </div>
+                        <div className="p-2 bg-white/70 rounded-lg border border-emerald-200">
+                          ✉️ Surat Tagihan: <strong>{migrationResult.counts.billingLetters}</strong>
+                        </div>
+                        <div className="p-2 bg-white/70 rounded-lg border border-emerald-200">
+                          📁 Dokumen: <strong>{migrationResult.counts.documents}</strong>
+                        </div>
+                        <div className="p-2 bg-white/70 rounded-lg border border-emerald-200">
+                          🛡️ Audit Logs: <strong>{migrationResult.counts.auditLogs}</strong>
+                        </div>
+                        <div className="p-2 bg-white/70 rounded-lg border border-emerald-200">
+                          🏢 Organisasi: <strong>{migrationResult.counts.organizations}</strong>
+                        </div>
+                      </div>
+                    )}
+                    {migrationResult.errors.length > 0 && (
+                      <div className="pt-2 text-xs text-rose-700">
+                        {migrationResult.errors.map((e, idx) => (
+                          <div key={idx}>• {e}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Multi-Tenant & Role Matrix Security Breakdown */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-600" />
+                Matriks Hak Akses & Keamanan Multi-Tenant (RBAC & RLS)
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Pengguna hanya dapat mengakses data organisasi milik mereka sendiri. Pembatasan divalidasi langsung di tingkat PostgreSQL database.
               </p>
             </div>
 
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleCopySql}
-              leftIcon={<Copy className="w-4 h-4" />}
-            >
-              {copiedSql ? 'Tersalin!' : 'Copy SQL Schema'}
-            </Button>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+                <thead className="bg-slate-100 text-slate-700 font-bold">
+                  <tr>
+                    <th className="py-2.5 px-3">Role Pengguna</th>
+                    <th className="py-2.5 px-3">Hak Akses Data</th>
+                    <th className="py-2.5 px-3">Invoice & Tagihan</th>
+                    <th className="py-2.5 px-3">Pembayaran & Kuitansi</th>
+                    <th className="py-2.5 px-3">Hapus Rekor</th>
+                    <th className="py-2.5 px-3">Setelan Tenant</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-600">
+                  <tr>
+                    <td className="py-2.5 px-3 font-bold text-purple-700">Owner (Direktur)</td>
+                    <td className="py-2.5 px-3">Semua data organisasi</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Buat, Edit, Kirim</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Catat & Validasi</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Diizinkan</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Penuh (Termasuk Rekening)</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 font-bold text-blue-700">Admin Operasional</td>
+                    <td className="py-2.5 px-3">Semua data organisasi</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Buat, Edit, Kirim</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Catat & Validasi</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Diizinkan</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Edit Profil</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 font-bold text-emerald-700">Finance & Akuntansi</td>
+                    <td className="py-2.5 px-3">Invoice, Bayar, Pajak, Bank</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Buat & Edit</td>
+                    <td className="py-2.5 px-3 text-emerald-600 font-semibold">Catat & Rekonsiliasi</td>
+                    <td className="py-2.5 px-3 text-amber-600 font-semibold">Draft Saja</td>
+                    <td className="py-2.5 px-3 text-slate-400">Hanya Lihat</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 font-bold text-amber-700">Staff Penagihan</td>
+                    <td className="py-2.5 px-3">Invoice & Surat Tagihan</td>
+                    <td className="py-2.5 px-3 text-blue-600 font-semibold">Draft & Surat Tagihan</td>
+                    <td className="py-2.5 px-3 text-slate-400">Hanya Lihat</td>
+                    <td className="py-2.5 px-3 text-slate-400">Tidak Diizinkan</td>
+                    <td className="py-2.5 px-3 text-slate-400">Tidak Diizinkan</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 font-bold text-slate-700">Viewer / Auditor</td>
+                    <td className="py-2.5 px-3">Semua Laporan & Faktur</td>
+                    <td className="py-2.5 px-3 text-slate-400">Hanya Lihat (Read-Only)</td>
+                    <td className="py-2.5 px-3 text-slate-400">Hanya Lihat (Read-Only)</td>
+                    <td className="py-2.5 px-3 text-slate-400">Tidak Diizinkan</td>
+                    <td className="py-2.5 px-3 text-slate-400">Tidak Diizinkan</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <div className="p-4 bg-slate-900 rounded-xl text-slate-200 text-xs font-mono max-h-96 overflow-y-auto leading-relaxed">
-            <pre>{SUPABASE_SQL_MIGRATION}</pre>
+          {/* DDL Schema Viewer */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-4 shadow-2xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Server className="w-4 h-4 text-slate-700" />
+                  Supabase PostgreSQL Schema & RLS Security Script
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Salin skrip SQL ini ke SQL Editor di dashboard Supabase Anda untuk menerapkan seluruh tabel dan RLS.
+                </p>
+              </div>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCopySql}
+                leftIcon={<Copy className="w-4 h-4" />}
+              >
+                {copiedSql ? 'Tersalin!' : 'Copy SQL Schema'}
+              </Button>
+            </div>
+
+            <div className="p-4 bg-slate-900 rounded-xl text-slate-200 text-xs font-mono max-h-96 overflow-y-auto leading-relaxed border border-slate-800">
+              <pre>{SUPABASE_SQL_MIGRATION}</pre>
+            </div>
           </div>
         </div>
       )}

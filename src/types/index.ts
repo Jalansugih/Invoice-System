@@ -1,4 +1,4 @@
-export type UserRole = 'owner' | 'admin' | 'finance' | 'staff';
+export type UserRole = 'owner' | 'admin' | 'finance' | 'staff' | 'viewer';
 
 export interface UserProfile {
   id: string;
@@ -115,8 +115,7 @@ export interface Invoice {
   customerPhone: string;
   customerAddress: string;
   customerNpwp?: string;
-  customerPic?: string; // <-- Tambahkan baris ini
-  // ... sisa properti lainnya
+  customerPic?: string;
   issueDate: string; // YYYY-MM-DD
   dueDate: string; // YYYY-MM-DD
   poNumber?: string;

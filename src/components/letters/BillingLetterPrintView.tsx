@@ -230,10 +230,12 @@ export const BillingLetterPrintView: React.FC<BillingLetterPrintViewProps> = ({ 
             </div>
 
             <div>
-              <p className="font-bold text-slate-900 underline uppercase">
-                {org.directorName || 'Finance & Accounting Director'}
+              <p className="font-bold text-slate-900 underline uppercase tracking-tight">
+                {org.signatureName || org.directorName || 'Finance & Accounting Director'}
               </p>
-              <p className="text-[11px] text-slate-500">Head of Finance & Billing</p>
+              <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+                {org.signatureRole || 'Head of Finance & Billing'}
+              </p>
             </div>
           </div>
         </div>

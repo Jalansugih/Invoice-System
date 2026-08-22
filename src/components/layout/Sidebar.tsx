@@ -18,6 +18,8 @@ import {
   ShieldCheck,
   Receipt,
   FileSpreadsheet,
+  BookOpen,
+  HelpCircle,
 } from 'lucide-react';
 import { StorageService } from '../../lib/storage';
 import { cn } from '../../lib/utils';
@@ -30,6 +32,7 @@ export interface SidebarProps {
   onToggleCollapse: () => void;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
+  onOpenGuide?: () => void;
 }
 
 interface NavGroup {
@@ -50,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
   isOpenMobile,
   onCloseMobile,
+  onOpenGuide,
 }) => {
   const { user: authUser, signOut } = useAuth();
   const org = StorageService.getOrganization();
@@ -192,22 +196,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="flex items-center gap-3 cursor-pointer overflow-hidden min-w-0"
           >
             {/* Monogram Emblem */}
-            <div className="w-8 h-8 rounded-sm overflow-hidden shrink-0 shadow-xs border border-blue-500/20">
-            <img src="/logo-rk-bendahara.png"
-             alt="Logo"
-             className="w-full h-full object-cover"
-             />
-             
-             </div>
+            <div className="w-8 h-8 rounded-sm overflow-hidden flex items-center justify-center shrink-0 shadow-xs border-[0.5px] border-slate-700/40 bg-slate-200">
+  <img 
+    src="/logo-rk-bendahara.png" 
+    alt="Logo" 
+    className="w-full h-full object-cover" 
+  />
+</div>
 
             {!isCollapsed && (
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm font-bold text-white tracking-tight truncate">
-                    Rajakas
-                    <span className="text-sm font-bold text-blue-400">.ID</span>
+                    Rajakas<span className="text-sm font-bold text-blue-400">.id</span>
                   </span>
-                  <span className="px-1.5 py-0.2 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[9px] font-bold rounded">
+                  <span className="px-1.5 py-0.2 bg-blue-500/20 text-white/30 border border-white/30 text-[9px] font-bold rounded">
                     ERP
                   </span>
                 </div>
@@ -341,9 +344,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <p className="text-xs font-bold text-slate-200 truncate group-hover:text-white">
                   {user.name}
                 </p>
-                <p className="text-[10px] text-slate-400 truncate capitalize">
-                  {user.role} • Keuangan
-                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className={cn(
+                      'text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider',
+                      user.role === 'owner' && 'bg-purple-950/80 text-purple-300 border border-purple-800/60',
+                      user.role === 'admin' && 'bg-blue-950/80 text-blue-300 border border-blue-800/60',
+                      user.role === 'finance' && 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60',
+                      user.role === 'staff' && 'bg-amber-950/80 text-amber-300 border border-amber-800/60',
+                      user.role === 'viewer' && 'bg-slate-800 text-slate-300 border border-slate-700'
+                    )}
+                  >
+                    {user.role}
+                  </span>
+                  <span className="text-[10px] text-slate-400 truncate">
+                    {org.name ? org.name.split(' ')[0] : 'Tenant'}
+                  </span>
+                </div>
               </div>
             )}
           </div>

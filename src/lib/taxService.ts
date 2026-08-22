@@ -639,7 +639,7 @@ export const initialTaxPeriods: Record<string, Partial<TaxPeriodSummary>> = {
     paymentDate: '2026-08-10',
     filingDate: '2026-08-18',
     filedBy: 'Budi Hartono (CFO)',
-    approvedBy: 'Anas All (Owner)',
+    approvedBy: 'Ahmad Fauzi (Owner)',
     reviewedBy: 'Dewi Lestari (Tax Officer)',
     isLocked: true,
   },

@@ -2,21 +2,21 @@ import React, { useState } from 'react';
 import { useAuth } from './Auth';
 import { StorageService } from '../../lib/storage';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
 import {
   Lock,
   Mail,
   User,
-  ShieldCheck,
   Building2,
   Eye,
   EyeOff,
-  Sparkles,
   AlertCircle,
   CheckCircle2,
   Database,
   ArrowRight,
   UserCheck,
+  ShieldAlert,
+  KeyRound,
+  ArrowLeft,
 } from 'lucide-react';
 import { UserRole } from '../../types';
 
@@ -25,14 +25,22 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
-  const { signInWithPassword, signUpWithPassword, signInDemoUser, isConfigured, loading } = useAuth();
+  const {
+    signInWithPassword,
+    signUpWithPassword,
+    resetPasswordForEmail,
+    signInDemoUser,
+    isConfigured,
+    loading,
+  } = useAuth();
   const org = StorageService.getOrganization();
 
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState<UserRole>('admin');
+  const [organizationName, setOrganizationName] = useState(org.name || 'PT Solusi Finansial Indonesia');
+  const [role, setRole] = useState<UserRole>('owner');
   const [showPassword, setShowPassword] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -44,13 +52,36 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    if (mode === 'forgot') {
+      if (!email) {
+        setErrorMsg('Harap masukkan alamat email Anda.');
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const { error } = await resetPasswordForEmail(email);
+        if (error) {
+          setErrorMsg(error.message || 'Gagal mengirim email reset password.');
+        } else {
+          setSuccessMsg(
+            'Tautan reset kata sandi telah dikirim ke email Anda. Silakan periksa kotak masuk/spam.'
+          );
+        }
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Terjadi kesalahan sistem.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (!email || !password) {
-      setErrorMsg('Harap isi alamat email dan password.');
+      setErrorMsg('Harap isi alamat email dan kata sandi.');
       return;
     }
 
     if (mode === 'signup' && !name) {
-      setErrorMsg('Harap isi nama lengkap pengguna.');
+      setErrorMsg('Harap isi nama lengkap Anda.');
       return;
     }
 
@@ -62,15 +93,21 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
         if (error) {
           setErrorMsg(error.message || 'Gagal login. Periksa kembali email dan password Anda.');
         } else {
-          setSuccessMsg('Login berhasil! Mengalihkan ke aplikasi...');
+          setSuccessMsg('Login berhasil! Mengalihkan ke dashboard...');
           if (onSuccess) onSuccess();
         }
       } else {
-        const { error } = await signUpWithPassword({ email, password, name, role });
+        const { error } = await signUpWithPassword({
+          email,
+          password,
+          name,
+          role,
+          organizationName,
+        });
         if (error) {
           setErrorMsg(error.message || 'Gagal mendaftar akun baru.');
         } else {
-          setSuccessMsg('Pendaftaran berhasil! Akun Anda telah siap.');
+          setSuccessMsg('Pendaftaran berhasil! Akun dan tenant organisasi Anda telah siap.');
           if (onSuccess) onSuccess();
         }
       }
@@ -88,16 +125,16 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-slate-900/95 p-4 sm:p-6 lg:p-8 font-sans antialiased text-slate-800">
-      {/* Background decoration elements */}
+      {/* Dynamic ambient lighting backdrop */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-blue-600/20 blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-emerald-600/15 blur-3xl" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full max-w-lg">
         {/* Main Auth Card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
-          {/* Card Header & Brand */}
+          {/* Card Header */}
           <div className="bg-slate-50 border-b border-slate-200 p-6 text-center">
             <div className="flex items-center justify-center mb-3">
               {org.logoUrl ? (
@@ -118,54 +155,74 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
               {org.name || 'BillingFlow Enterprise'}
             </h1>
             <p className="text-xs text-slate-500 mt-1">
-              Sistem Manajemen Invoice, Surat Tagihan & Keuangan Perusahaan
+              Sistem Manajemen Faktur, Surat Tagihan, DJP & Multi-Tenant Database
             </p>
 
             {/* Supabase Status Tag */}
-            <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-white border border-slate-200 shadow-2xs">
+            <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-white border border-slate-200 shadow-2xs">
               <Database className={`w-3.5 h-3.5 ${isConfigured ? 'text-emerald-600' : 'text-blue-600'}`} />
               <span className="text-slate-600">
-                {isConfigured ? 'Terhubung Supabase Auth' : 'Mode Offline / Local Auth'}
+                {isConfigured ? 'Supabase PostgreSQL Cloud' : 'Supabase Client / Mode Offline'}
               </span>
-              <span className={`w-1.5 h-1.5 rounded-full ${isConfigured ? 'bg-emerald-500' : 'bg-blue-500'} animate-pulse`} />
+              <span className={`w-2 h-2 rounded-full ${isConfigured ? 'bg-emerald-500' : 'bg-blue-500'} animate-pulse`} />
             </div>
           </div>
 
-          {/* Form Content */}
+          {/* Form Body */}
           <div className="p-6 space-y-5">
-            {/* Mode Switcher Tabs */}
-            <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('signin');
-                  setErrorMsg(null);
-                  setSuccessMsg(null);
-                }}
-                className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  mode === 'signin'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Masuk (Sign In)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('signup');
-                  setErrorMsg(null);
-                  setSuccessMsg(null);
-                }}
-                className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  mode === 'signup'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Daftar Baru (Sign Up)
-              </button>
-            </div>
+            {mode !== 'forgot' ? (
+              /* Mode Switcher Tabs */
+              <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl">
+                <button
+                  type="button"
+                  id="tab-signin"
+                  onClick={() => {
+                    setMode('signin');
+                    setErrorMsg(null);
+                    setSuccessMsg(null);
+                  }}
+                  className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    mode === 'signin'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Masuk (Sign In)
+                </button>
+                <button
+                  type="button"
+                  id="tab-signup"
+                  onClick={() => {
+                    setMode('signup');
+                    setErrorMsg(null);
+                    setSuccessMsg(null);
+                  }}
+                  className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    mode === 'signup'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Daftar Organisasi Baru
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    setErrorMsg(null);
+                    setSuccessMsg(null);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-blue-600 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Kembali ke Halaman Masuk
+                </button>
+                <span className="text-xs font-semibold text-slate-400">Reset Kata Sandi</span>
+              </div>
+            )}
 
             {/* Alert Messages */}
             {errorMsg && (
@@ -182,12 +239,31 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
               </div>
             )}
 
-            {/* Actual Form */}
+            {/* Form Fields */}
             <form onSubmit={handleSubmit} className="space-y-4">
               {mode === 'signup' && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Nama Perusahaan / Organisasi (Tenant)
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="cth. PT Solusi Digital Nusantara"
+                        value={organizationName}
+                        onChange={(e) => setOrganizationName(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap Pengguna</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                         <User className="w-4 h-4" />
@@ -198,22 +274,23 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        required={mode === 'signup'}
+                        required
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Peran / Role Pengguna</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Peran & Hak Akses (Role)</label>
                     <select
                       value={role}
                       onChange={(e) => setRole(e.target.value as UserRole)}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     >
-                      <option value="admin">Admin Operasional</option>
-                      <option value="finance">Finance / Keuangan</option>
-                      <option value="staff">Staff Penagihan</option>
-                      <option value="owner">Owner / Direktur</option>
+                      <option value="owner">Owner (Direktur / Pemilik Usaha - Akses Penuh)</option>
+                      <option value="admin">Admin Operasional (Kelola Invoice, Klien, Produk)</option>
+                      <option value="finance">Finance & Akuntansi (Input Pembayaran, Pajak, Rekonsiliasi)</option>
+                      <option value="staff">Staff Penagihan (Draft Tagihan & Surat Tagihan)</option>
+                      <option value="viewer">Viewer / Auditor (Hanya Lihat Laporan & Faktur)</option>
                     </select>
                   </div>
                 </>
@@ -227,6 +304,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                   </div>
                   <input
                     type="email"
+                    id="input-auth-email"
                     placeholder="nama@perusahaan.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -236,79 +314,140 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Kata Sandi (Password)</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <Lock className="w-4 h-4" />
+              {mode !== 'forgot' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">Kata Sandi (Password)</label>
+                    {mode === 'signin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('forgot');
+                          setErrorMsg(null);
+                          setSuccessMsg(null);
+                        }}
+                        className="text-[11px] font-medium text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+                      >
+                        Lupa kata sandi?
+                      </button>
+                    )}
                   </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-9 pr-10 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      id="input-auth-password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-9 pr-10 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <Button
                 type="submit"
+                id="btn-auth-submit"
                 className="w-full justify-center py-2.5 mt-2"
                 isLoading={isSubmitting || loading}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
-                {mode === 'signin' ? 'Masuk ke Aplikasi' : 'Buat Akun Sekarang'}
+                {mode === 'signin'
+                  ? 'Masuk ke Aplikasi'
+                  : mode === 'signup'
+                  ? 'Buat Akun & Tenant Baru'
+                  : 'Kirim Instruksi Reset'}
               </Button>
             </form>
 
-            {/* Quick Demo Accounts Selection */}
+            {/* Quick Demo Access - All 5 Roles */}
             <div className="pt-4 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2.5">
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                   <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-                  Akses Cepat Akun Demo:
+                  Pilih Cepat Akun Demo (5 Role Multi-Tenant):
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleQuickDemoLogin('admin')}
-                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-left transition-all cursor-pointer group"
+                  id="btn-demo-owner"
+                  onClick={() => handleQuickDemoLogin('owner')}
+                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-purple-50 hover:border-purple-300 text-left transition-all cursor-pointer group"
                 >
-                  <div className="text-xs font-bold text-slate-800 group-hover:text-blue-700">
-                    Budi Santoso
+                  <div className="text-xs font-bold text-slate-800 group-hover:text-purple-700 truncate">
+                    Ir. Ahmad Fauzi
                   </div>
-                  <div className="text-[10px] text-slate-500">Role: Admin</div>
+                  <div className="text-[10px] text-purple-600 font-semibold">Owner (Full)</div>
                 </button>
 
                 <button
                   type="button"
+                  id="btn-demo-admin"
+                  onClick={() => handleQuickDemoLogin('admin')}
+                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-left transition-all cursor-pointer group"
+                >
+                  <div className="text-xs font-bold text-slate-800 group-hover:text-blue-700 truncate">
+                    Budi Santoso
+                  </div>
+                  <div className="text-[10px] text-blue-600 font-semibold">Admin Ops</div>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-demo-finance"
                   onClick={() => handleQuickDemoLogin('finance')}
                   className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-left transition-all cursor-pointer group"
                 >
-                  <div className="text-xs font-bold text-slate-800 group-hover:text-emerald-700">
+                  <div className="text-xs font-bold text-slate-800 group-hover:text-emerald-700 truncate">
                     Siti Rahma
                   </div>
-                  <div className="text-[10px] text-slate-500">Role: Finance</div>
+                  <div className="text-[10px] text-emerald-600 font-semibold">Finance</div>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-demo-staff"
+                  onClick={() => handleQuickDemoLogin('staff')}
+                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-amber-50 hover:border-amber-300 text-left transition-all cursor-pointer group"
+                >
+                  <div className="text-xs font-bold text-slate-800 group-hover:text-amber-700 truncate">
+                    Rian Pratama
+                  </div>
+                  <div className="text-[10px] text-amber-600 font-semibold">Staff Tagihan</div>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-demo-viewer"
+                  onClick={() => handleQuickDemoLogin('viewer')}
+                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-200/70 hover:border-slate-400 text-left transition-all cursor-pointer group col-span-2 sm:col-span-1"
+                >
+                  <div className="text-xs font-bold text-slate-800 group-hover:text-slate-900 truncate">
+                    Dewi Lestari
+                  </div>
+                  <div className="text-[10px] text-slate-600 font-semibold">Viewer (Read-Only)</div>
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Footer info */}
+        {/* Footer */}
         <p className="text-center text-[11px] text-slate-400 mt-4">
-          © 2026 {org.name || 'BillingFlow'}. Dilengkapi enkripsi sesi & otorisasi Supabase.
+          © 2026 {org.name || 'BillingFlow'}. Single Source of Truth & Row Level Security (RLS).
         </p>
       </div>
     </div>
