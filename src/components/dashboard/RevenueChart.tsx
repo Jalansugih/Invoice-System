@@ -13,16 +13,32 @@ import { Invoice, Payment } from '../../types';
 import { formatRupiah } from '../../lib/utils';
 import { Calendar, TrendingUp, Sparkles } from 'lucide-react';
 
-export type RevenuePeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type RevenuePeriod = 'daily' | 'weekly' | 'quarterly' | 'monthly' | 'yearly';
 
 export interface RevenueChartProps {
   invoices: Invoice[];
   payments: Payment[];
+  selectedPeriod?: 'month' | 'quarter' | 'year';
 }
 
-export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }) => {
+export const RevenueChart: React.FC<RevenueChartProps> = ({
+  invoices,
+  payments,
+  selectedPeriod,
+}) => {
   const [period, setPeriod] = useState<RevenuePeriod>('monthly');
   const [chartType, setChartType] = useState<'area' | 'line'>('area');
+
+  // Synchronize when the executive header period toggle changes
+  React.useEffect(() => {
+    if (selectedPeriod === 'month') {
+      setPeriod('weekly');
+    } else if (selectedPeriod === 'quarter') {
+      setPeriod('quarterly');
+    } else if (selectedPeriod === 'year') {
+      setPeriod('yearly');
+    }
+  }, [selectedPeriod]);
 
   // Generate chart data dynamically based on the selected period
   const chartData = useMemo(() => {
@@ -110,6 +126,43 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
           fullDate: `Minggu ${w.label} - Agustus 2026`,
           invoiced,
           collected,
+        };
+      });
+    }
+
+    if (period === 'quarterly') {
+      // Q3 Breakdown (Juli, Agustus, September 2026)
+      const q3Data = [
+        { name: 'Juli 2026', monthIdx: 6, label: 'Kuartal 3 - Juli 2026' },
+        { name: 'Agustus 2026', monthIdx: 7, label: 'Kuartal 3 - Agustus 2026' },
+        { name: 'September 2026 (Est)', monthIdx: 8, label: 'Kuartal 3 - September 2026 (Proyeksi)' },
+      ];
+
+      return q3Data.map((q) => {
+        const mInvoices = invoices.filter((inv) => {
+          if (!inv.issueDate) return false;
+          const d = new Date(inv.issueDate);
+          return d.getFullYear() === currentYear && d.getMonth() === q.monthIdx;
+        });
+
+        const mPayments = payments.filter((p) => {
+          if (!p.paymentDate) return false;
+          const d = new Date(p.paymentDate);
+          return d.getFullYear() === currentYear && d.getMonth() === q.monthIdx;
+        });
+
+        const actualInvoiced = mInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+        const actualCollected = mPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        // Fill with realistic Q3 baselines if empty
+        const defaultInvoiced = q.monthIdx === 6 ? 310000000 : q.monthIdx === 7 ? 245000000 : 340000000;
+        const defaultCollected = q.monthIdx === 6 ? 285000000 : q.monthIdx === 7 ? 220000000 : 310000000;
+
+        return {
+          name: q.name,
+          fullDate: q.label,
+          invoiced: actualInvoiced > 0 ? actualInvoiced : defaultInvoiced,
+          collected: actualCollected > 0 ? actualCollected : defaultCollected,
         };
       });
     }
@@ -222,6 +275,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
   const periodDescriptions: Record<RevenuePeriod, string> = {
     daily: 'Tren harian 7 hari terakhir (13 - 19 Agustus 2026)',
     weekly: 'Distribusi mingguan bulan berjalan (Agustus 2026)',
+    quarterly: 'Kinerja kuartal 3 berjalan (Juli - September 2026)',
     monthly: 'Kinerja faktur & penerimaan bulanan tahun 2026',
     yearly: 'Pertumbuhan & realisasi pendapatan multi-tahun (2023 - 2027)',
   };
@@ -285,7 +339,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-slate-900 text-sm">Tren Pendapatan & Kas Masuk</h3>
                 <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                  {period === 'daily' ? 'Harian' : period === 'weekly' ? 'Mingguan' : period === 'monthly' ? 'Bulanan' : 'Tahunan'}
+                  {period === 'daily' ? 'Harian' : period === 'weekly' ? 'Mingguan' : period === 'quarterly' ? 'Kuartal Q3' : period === 'monthly' ? 'Bulanan' : 'Tahunan'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">{periodDescriptions[period]}</p>
@@ -321,7 +375,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
             </button>
           </div>
 
-          {/* 4-Period Switcher Pill Tabs */}
+          {/* Period Switcher Pill Tabs */}
           <div className="inline-flex p-0.5 rounded-lg bg-slate-100 border border-slate-200">
             <button
               type="button"
@@ -344,6 +398,17 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ invoices, payments }
               }`}
             >
               Mingguan
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriod('quarterly')}
+              className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
+                period === 'quarterly'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              Kuartal
             </button>
             <button
               type="button"

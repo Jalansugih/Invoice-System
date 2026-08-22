@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StorageService } from '../../lib/storage';
 import { Invoice } from '../../types';
 import { DashboardStatsCards } from './DashboardStatsCards';
@@ -63,10 +63,103 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return unsub;
   }, []);
 
-  const overdueInvoices = invoices.filter((i) => i.status === 'overdue');
+  // System benchmark date: August 2026
+  const refYear = 2026;
+  const refMonth = 7; // 0-indexed for August
+
+  // Dynamic filter for invoices by selected period
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter((inv) => {
+      if (!inv.issueDate) return true;
+      const d = new Date(inv.issueDate);
+      const yr = d.getFullYear();
+      const m = d.getMonth();
+
+      if (selectedPeriod === 'month') {
+        return yr === refYear && m === refMonth;
+      }
+      if (selectedPeriod === 'quarter') {
+        // Q3: July (6), August (7), September (8)
+        return yr === refYear && (m === 6 || m === 7 || m === 8);
+      }
+      if (selectedPeriod === 'year') {
+        return yr === refYear;
+      }
+      return true;
+    });
+  }, [invoices, selectedPeriod]);
+
+  // Dynamic filter for payments by selected period
+  const filteredPayments = useMemo(() => {
+    return payments.filter((p) => {
+      if (!p.paymentDate) return true;
+      const d = new Date(p.paymentDate);
+      const yr = d.getFullYear();
+      const m = d.getMonth();
+
+      if (selectedPeriod === 'month') {
+        return yr === refYear && m === refMonth;
+      }
+      if (selectedPeriod === 'quarter') {
+        return yr === refYear && (m === 6 || m === 7 || m === 8);
+      }
+      if (selectedPeriod === 'year') {
+        return yr === refYear;
+      }
+      return true;
+    });
+  }, [payments, selectedPeriod]);
+
+  // Recalculate KPI metrics for the selected period
+  const periodStats = useMemo(() => {
+    const invs = filteredInvoices;
+    const pays = filteredPayments;
+
+    const totalInvoicesCount = invs.length;
+    const totalInvoicedAmount = invs.reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+
+    const unpaidInvs = invs.filter(
+      (i) => i.status === 'unpaid' || i.status === 'sent' || i.status === 'partially_paid' || i.status === 'draft'
+    );
+    const unpaidAmount = unpaidInvs.reduce((sum, i) => sum + (i.outstandingAmount || 0), 0);
+    const unpaidCount = unpaidInvs.length;
+
+    const overdueInvs = invs.filter((i) => i.status === 'overdue');
+    const overdueAmount = overdueInvs.reduce((sum, i) => sum + (i.outstandingAmount || 0), 0);
+    const overdueCount = overdueInvs.length;
+
+    const totalOutstandingReceivables = unpaidAmount + overdueAmount;
+    const paidInvoicesCount = invs.filter((i) => i.status === 'paid').length;
+
+    const monthPaymentsAmount = pays.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const monthPaymentsCount = pays.length;
+    const monthRevenueAmount = monthPaymentsAmount;
+
+    return {
+      totalInvoicesCount,
+      totalInvoicedAmount,
+      unpaidCount,
+      unpaidAmount,
+      overdueCount,
+      overdueAmount,
+      totalOutstandingReceivables,
+      monthPaymentsAmount,
+      monthPaymentsCount,
+      monthRevenueAmount,
+      paidInvoicesCount,
+    };
+  }, [filteredInvoices, filteredPayments]);
+
+  const overdueInvoices = filteredInvoices.filter((i) => i.status === 'overdue');
   const org = StorageService.getOrganization();
   const bankTxs = StorageService.getBankTransactions();
   const unreconciledCount = bankTxs.filter((s) => s.status === 'unmatched' || s.status === 'matched').length;
+
+  const periodRangeLabel = {
+    month: '1 – 31 Agustus 2026 (Bulan Berjalan)',
+    quarter: '1 Juli – 30 September 2026 (Kuartal 3 / Q3)',
+    year: '1 Januari – 31 Desember 2026 (Tahun Buku 2026 YTD)',
+  }[selectedPeriod];
 
   return (
     <div className="space-y-6 pb-12">
@@ -141,23 +234,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           >
             Catat Kas Masuk
           </Button>
+        </div>
+      </div>
 
-          {onOpenGuide && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onOpenGuide}
-              leftIcon={<BookOpen className="w-4 h-4 text-blue-600" />}
-              className="text-blue-700 bg-blue-50/50 hover:bg-blue-100/70 border-blue-200 font-semibold"
-            >
-              Petunjuk Penggunaan
-            </Button>
-          )}
+      {/* Active Horizon Indicator Bar */}
+      <div className="bg-slate-50 border border-slate-200/90 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 text-slate-700">
+          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+          <span className="font-medium text-slate-500">Rentang Data Analisis:</span>
+          <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs font-mono">
+            {periodRangeLabel}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-slate-500 font-mono text-[11px]">
+          <span>
+            <strong className="text-slate-800">{filteredInvoices.length}</strong> Faktur
+          </span>
+          <span>&bull;</span>
+          <span>
+            Tagihan: <strong className="text-slate-800">{formatRupiah(periodStats.totalInvoicedAmount)}</strong>
+          </span>
+          <span>&bull;</span>
+          <span>
+            Kas Masuk: <strong className="text-emerald-700">{formatRupiah(periodStats.monthRevenueAmount)}</strong>
+          </span>
         </div>
       </div>
 
       {/* 2. Executive KPI Cards */}
-      <DashboardStatsCards stats={stats} onNavigate={onNavigate} />
+      <DashboardStatsCards
+        stats={periodStats}
+        onNavigate={onNavigate}
+        selectedPeriod={selectedPeriod}
+      />
 
       {/* 3. Operational Action Strip / Pusat Tugas Keuangan */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -194,7 +303,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5 truncate">
               {overdueInvoices.length > 0
-                ? `${formatRupiah(stats.overdueAmount)} melewati jatuh tempo`
+                ? `${formatRupiah(periodStats.overdueAmount)} melewati jatuh tempo`
                 : 'Semua faktur berjalan tertagih tepat waktu'}
             </p>
             <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-blue-600">
@@ -260,7 +369,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* 4. Primary Analytical Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         <div className="lg:col-span-2">
-          <RevenueChart invoices={invoices} payments={payments} />
+          <RevenueChart
+            invoices={invoices}
+            payments={payments}
+            selectedPeriod={selectedPeriod}
+          />
         </div>
         <div>
           <AgingReceivablesChart agingData={agingData} />
@@ -270,11 +383,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* 5. Secondary Operational Data Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         <div>
-          <InvoiceStatusChart invoices={invoices} />
+          <InvoiceStatusChart invoices={filteredInvoices} />
         </div>
         <div className="lg:col-span-2">
           <RecentInvoicesTable
-            invoices={invoices}
+            invoices={filteredInvoices.length > 0 ? filteredInvoices : invoices}
             onViewInvoice={onViewInvoice}
             onRecordPayment={onRecordPaymentForInvoice}
             onCreateLetter={onCreateLetterForInvoice}
