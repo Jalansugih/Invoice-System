@@ -29,15 +29,19 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
     signInWithPassword,
     signUpWithPassword,
     resetPasswordForEmail,
+    updateUserPassword,
     signInDemoUser,
     isConfigured,
+    isPasswordRecovery,
+    setIsPasswordRecovery,
     loading,
   } = useAuth();
   const org = StorageService.getOrganization();
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'reset'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [organizationName, setOrganizationName] = useState(org.name || 'PT Solusi Finansial Indonesia');
   const [role, setRole] = useState<UserRole>('owner');
@@ -47,10 +51,47 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Auto-switch to reset mode if incoming state is password recovery
+  React.useEffect(() => {
+    if (isPasswordRecovery) {
+      setMode('reset');
+      setSuccessMsg('Sesi pemulihan akun terdeteksi. Silakan masukkan kata sandi baru Anda.');
+    }
+  }, [isPasswordRecovery]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    if (mode === 'reset') {
+      if (!password || password.length < 6) {
+        setErrorMsg('Kata sandi baru minimal 6 karakter.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setErrorMsg('Konfirmasi kata sandi tidak cocok.');
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const { error } = await updateUserPassword(password);
+        if (error) {
+          setErrorMsg(error.message || 'Gagal memperbarui kata sandi.');
+        } else {
+          setSuccessMsg('Kata sandi berhasil diperbarui! Mengalihkan ke dashboard...');
+          setIsPasswordRecovery(false);
+          setTimeout(() => {
+            if (onSuccess) onSuccess();
+          }, 1000);
+        }
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Terjadi kesalahan saat mereset password.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
 
     if (mode === 'forgot') {
       if (!email) {
@@ -64,7 +105,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           setErrorMsg(error.message || 'Gagal mengirim email reset password.');
         } else {
           setSuccessMsg(
-            'Tautan reset kata sandi telah dikirim ke email Anda. Silakan periksa kotak masuk/spam.'
+            'Tautan reset kata sandi telah dikirim ke email Anda melalui Supabase Auth. Silakan periksa kotak masuk/spam.'
           );
         }
       } catch (err: any) {
@@ -170,7 +211,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
           {/* Form Body */}
           <div className="p-6 space-y-5">
-            {mode !== 'forgot' ? (
+            {mode === 'signin' || mode === 'signup' ? (
               /* Mode Switcher Tabs */
               <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl">
                 <button
@@ -214,13 +255,16 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                     setMode('signin');
                     setErrorMsg(null);
                     setSuccessMsg(null);
+                    setIsPasswordRecovery(false);
                   }}
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-blue-600 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   Kembali ke Halaman Masuk
                 </button>
-                <span className="text-xs font-semibold text-slate-400">Reset Kata Sandi</span>
+                <span className="text-xs font-semibold text-blue-600">
+                  {mode === 'reset' ? 'Atur Ulang Kata Sandi' : 'Lupa Kata Sandi'}
+                </span>
               </div>
             )}
 
@@ -296,28 +340,32 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                 </>
               )}
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Alamat Email</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <Mail className="w-4 h-4" />
+              {mode !== 'reset' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Alamat Email</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="email"
+                      id="input-auth-email"
+                      placeholder="nama@perusahaan.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      required
+                    />
                   </div>
-                  <input
-                    type="email"
-                    id="input-auth-email"
-                    placeholder="nama@perusahaan.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    required
-                  />
                 </div>
-              </div>
+              )}
 
               {mode !== 'forgot' && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700">Kata Sandi (Password)</label>
+                    <label className="block text-xs font-bold text-slate-700">
+                      {mode === 'reset' ? 'Kata Sandi Baru' : 'Kata Sandi (Password)'}
+                    </label>
                     {mode === 'signin' && (
                       <button
                         type="button"
@@ -356,6 +404,28 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                 </div>
               )}
 
+              {mode === 'reset' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Konfirmasi Kata Sandi Baru
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <KeyRound className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      id="input-auth-confirm-password"
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full pl-9 pr-10 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
               <Button
                 type="submit"
                 id="btn-auth-submit"
@@ -367,6 +437,8 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                   ? 'Masuk ke Aplikasi'
                   : mode === 'signup'
                   ? 'Buat Akun & Tenant Baru'
+                  : mode === 'reset'
+                  ? 'Simpan Kata Sandi Baru'
                   : 'Kirim Instruksi Reset'}
               </Button>
             </form>

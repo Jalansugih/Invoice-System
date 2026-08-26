@@ -1,14 +1,15 @@
 -- =========================================================================
--- BILLINGFLOW SUPABASE POSTGRESQL PRODUCTION MIGRATION
--- Multi-tenant Financial Invoicing, Billing Letters, Payments & Audit Trail
--- Compatible with direct copy-paste execution in Supabase SQL Editor
+-- BILLINGFLOW SUPABASE POSTGRESQL INITIAL SCHEMA MIGRATION
+-- Tables: organizations, bank_accounts, profiles, customers, products,
+--         invoices, invoice_items, payments, billing_letters, documents, audit_logs
+-- Supports: UUID v4 primary keys, pgcrypto, automatic profile triggers, and multi-tenant RLS policies
 -- =========================================================================
 
 -- 1. Enable Required Cryptographic & UUID Extensions
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Organizations Table (Multi-tenant Root)
+-- 2. Organizations Table (Tenant Isolation Root)
 CREATE TABLE IF NOT EXISTS public.organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
     signature_name VARCHAR(255),
     signature_role VARCHAR(255),
     signature_image TEXT,
+    director_name VARCHAR(255),
     default_tax_rate NUMERIC(5,2) DEFAULT 11.00,
     default_currency VARCHAR(10) DEFAULT 'IDR',
     timezone VARCHAR(50) DEFAULT 'Asia/Jakarta',
@@ -32,11 +34,11 @@ CREATE TABLE IF NOT EXISTS public.organizations (
     billing_letter_format VARCHAR(100) DEFAULT 'ST/{YEAR}/{MONTH}/{NUMBER}',
     payment_receipt_format VARCHAR(100) DEFAULT 'KWT/{YEAR}/{MONTH}/{NUMBER}',
     default_payment_terms_days INT DEFAULT 14,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. Bank Accounts
+-- 3. Bank Accounts Table
 CREATE TABLE IF NOT EXISTS public.bank_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -45,19 +47,19 @@ CREATE TABLE IF NOT EXISTS public.bank_accounts (
     account_holder VARCHAR(255) NOT NULL,
     branch VARCHAR(100),
     is_default BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. User Profiles & Organization Memberships (Foreign Key to auth.users)
+-- 4. User Profiles Table (Linked with Supabase auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
-    role VARCHAR(50) DEFAULT 'finance' CHECK (role IN ('owner', 'admin', 'finance', 'staff', 'viewer')),
+    role VARCHAR(50) NOT NULL DEFAULT 'finance' CHECK (role IN ('owner', 'admin', 'finance', 'staff', 'viewer')),
     avatar_url TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 5. Customers / Clients Table
@@ -77,15 +79,15 @@ CREATE TABLE IF NOT EXISTS public.customers (
     pic VARCHAR(255) NOT NULL,
     pic_phone VARCHAR(50),
     notes TEXT,
-    is_active BOOLEAN DEFAULT TRUE,
-    total_invoiced NUMERIC(15,2) DEFAULT 0,
-    total_paid NUMERIC(15,2) DEFAULT 0,
-    total_outstanding NUMERIC(15,2) DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    total_invoiced NUMERIC(15,2) NOT NULL DEFAULT 0,
+    total_paid NUMERIC(15,2) NOT NULL DEFAULT 0,
+    total_outstanding NUMERIC(15,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. Products / Services Master
+-- 6. Products & Services Master Table
 CREATE TABLE IF NOT EXISTS public.products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -95,10 +97,10 @@ CREATE TABLE IF NOT EXISTS public.products (
     description TEXT,
     unit VARCHAR(50) NOT NULL DEFAULT 'Unit',
     price NUMERIC(15,2) NOT NULL DEFAULT 0,
-    tax_rate NUMERIC(5,2) DEFAULT 11.00,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    tax_rate NUMERIC(5,2) NOT NULL DEFAULT 11.00,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 7. Invoices Table
@@ -114,26 +116,26 @@ CREATE TABLE IF NOT EXISTS public.invoices (
     notes TEXT,
     payment_terms VARCHAR(255),
     subtotal NUMERIC(15,2) NOT NULL DEFAULT 0,
-    discount_type VARCHAR(20) DEFAULT 'fixed' CHECK (discount_type IN ('percentage', 'fixed')),
-    discount_value NUMERIC(15,2) DEFAULT 0,
-    discount_amount NUMERIC(15,2) DEFAULT 0,
-    tax_rate NUMERIC(5,2) DEFAULT 11.00,
-    tax_amount NUMERIC(15,2) DEFAULT 0,
-    additional_charges NUMERIC(15,2) DEFAULT 0,
+    discount_type VARCHAR(20) NOT NULL DEFAULT 'fixed' CHECK (discount_type IN ('percentage', 'fixed')),
+    discount_value NUMERIC(15,2) NOT NULL DEFAULT 0,
+    discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_rate NUMERIC(5,2) NOT NULL DEFAULT 11.00,
+    tax_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    additional_charges NUMERIC(15,2) NOT NULL DEFAULT 0,
     grand_total NUMERIC(15,2) NOT NULL DEFAULT 0,
-    paid_amount NUMERIC(15,2) DEFAULT 0,
+    paid_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
     outstanding_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
-    status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'viewed', 'unpaid', 'partially_paid', 'paid', 'overdue', 'cancelled')),
+    status VARCHAR(50) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'viewed', 'unpaid', 'partially_paid', 'paid', 'overdue', 'cancelled')),
     bank_account_id UUID REFERENCES public.bank_accounts(id) ON DELETE SET NULL,
     created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     sent_at TIMESTAMPTZ,
     viewed_at TIMESTAMPTZ,
     paid_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 8. Invoice Line Items
+-- 8. Invoice Line Items Table
 CREATE TABLE IF NOT EXISTS public.invoice_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_id UUID NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE,
@@ -143,13 +145,13 @@ CREATE TABLE IF NOT EXISTS public.invoice_items (
     quantity NUMERIC(10,2) NOT NULL DEFAULT 1,
     unit VARCHAR(50) NOT NULL DEFAULT 'Unit',
     unit_price NUMERIC(15,2) NOT NULL DEFAULT 0,
-    discount NUMERIC(15,2) DEFAULT 0,
-    tax_rate NUMERIC(5,2) DEFAULT 11.00,
+    discount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_rate NUMERIC(5,2) NOT NULL DEFAULT 11.00,
     amount NUMERIC(15,2) NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 9. Payments Table
+-- 9. Payments / Payment Tracking Table
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -166,10 +168,10 @@ CREATE TABLE IF NOT EXISTS public.payments (
     received_by VARCHAR(255),
     receipt_number VARCHAR(100) NOT NULL,
     created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 10. Surat Tagihan (Billing Letters / Dunning Notices)
+-- 10. Billing Letters Table (Surat Tagihan & Somasi)
 CREATE TABLE IF NOT EXISTS public.billing_letters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -181,17 +183,17 @@ CREATE TABLE IF NOT EXISTS public.billing_letters (
     invoice_due_date DATE NOT NULL,
     overdue_days INT NOT NULL DEFAULT 0,
     total_invoice_amount NUMERIC(15,2) NOT NULL,
-    paid_amount NUMERIC(15,2) DEFAULT 0,
+    paid_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
     outstanding_amount NUMERIC(15,2) NOT NULL,
     extended_due_date DATE NOT NULL,
     subject VARCHAR(255) NOT NULL,
     body_text TEXT NOT NULL,
-    status VARCHAR(50) DEFAULT 'sent',
+    status VARCHAR(50) NOT NULL DEFAULT 'sent',
     sent_at TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 11. Document Archive / Center
+-- 11. Documents Archive Table
 CREATE TABLE IF NOT EXISTS public.documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -204,7 +206,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
     date DATE NOT NULL,
     status VARCHAR(50),
     file_url TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 12. Audit Logs Table
@@ -219,10 +221,13 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
     record_id VARCHAR(100) NOT NULL,
     record_title VARCHAR(255) NOT NULL,
     details TEXT NOT NULL,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 13. Automatic User Profile & Organization Trigger on Auth Sign-Up
+-- =========================================================================
+-- 13. AUTOMATIC PROFILE & ORGANIZATION PROVISIONING (Auth Webhook Trigger)
+-- =========================================================================
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 DECLARE
@@ -231,24 +236,22 @@ DECLARE
     user_role TEXT;
     user_fullname TEXT;
 BEGIN
-    -- Extract metadata from raw_user_meta_data
     org_name := COALESCE(new.raw_user_meta_data->>'organization_name', 'Perusahaan Baru');
     user_role := COALESCE(new.raw_user_meta_data->>'role', 'owner');
     user_fullname := COALESCE(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', split_part(new.email, '@', 1));
     
-    -- Check if organization_id is already passed, otherwise generate a new one
     IF new.raw_user_meta_data->>'organization_id' IS NOT NULL AND new.raw_user_meta_data->>'organization_id' ~ '^[0-9a-fA-F-]{36}$' THEN
         org_id := (new.raw_user_meta_data->>'organization_id')::UUID;
     ELSE
         org_id := gen_random_uuid();
     END IF;
 
-    -- Ensure organization exists
+    -- Ensure tenant organization exists
     INSERT INTO public.organizations (id, name, email, created_at, updated_at)
     VALUES (org_id, org_name, new.email, NOW(), NOW())
     ON CONFLICT (id) DO NOTHING;
 
-    -- Insert into public.profiles
+    -- Ensure public user profile exists
     INSERT INTO public.profiles (id, organization_id, name, email, role, created_at, updated_at)
     VALUES (new.id, org_id, user_fullname, new.email, user_role, NOW(), NOW())
     ON CONFLICT (id) DO UPDATE SET
@@ -261,13 +264,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Attach trigger to auth.users
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 14. Performance Indexes
+-- =========================================================================
+-- 14. PERFORMANCE INDEXES
+-- =========================================================================
+
 CREATE INDEX IF NOT EXISTS idx_profiles_org ON public.profiles(organization_id);
 CREATE INDEX IF NOT EXISTS idx_customers_org ON public.customers(organization_id);
 CREATE INDEX IF NOT EXISTS idx_products_org ON public.products(organization_id);
@@ -281,7 +286,10 @@ CREATE INDEX IF NOT EXISTS idx_billing_letters_org ON public.billing_letters(org
 CREATE INDEX IF NOT EXISTS idx_documents_org ON public.documents(organization_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_org ON public.audit_logs(organization_id);
 
--- 15. Enable Row Level Security (RLS) on ALL tables
+-- =========================================================================
+-- 15. ROW LEVEL SECURITY (RLS) ACTIVATION
+-- =========================================================================
+
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bank_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -294,87 +302,89 @@ ALTER TABLE public.billing_letters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
--- 16. Multi-Tenant RLS Policies (Organization Level Isolation)
+-- =========================================================================
+-- 16. MULTI-TENANT ROW LEVEL SECURITY POLICIES
+-- =========================================================================
 
--- Helper function to get current user's organization_id
+-- Helper function to retrieve authenticated user's organization_id
 CREATE OR REPLACE FUNCTION public.get_auth_org_id()
 RETURNS UUID AS $$
     SELECT organization_id FROM public.profiles WHERE id = auth.uid() LIMIT 1;
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
--- Profiles: Users can see and update their own profile and profiles within the same organization
-DROP POLICY IF EXISTS "Profiles isolation policy" ON public.profiles;
-CREATE POLICY "Profiles isolation policy" ON public.profiles
+-- Profiles Policy: Users can view/update own profile or profiles in the same tenant organization
+DROP POLICY IF EXISTS "Profiles multi-tenant policy" ON public.profiles;
+CREATE POLICY "Profiles multi-tenant policy" ON public.profiles
     FOR ALL
     USING (id = auth.uid() OR organization_id = public.get_auth_org_id())
     WITH CHECK (id = auth.uid() OR organization_id = public.get_auth_org_id());
 
--- Organizations: Users can view and update their own organization
-DROP POLICY IF EXISTS "Organizations isolation policy" ON public.organizations;
-CREATE POLICY "Organizations isolation policy" ON public.organizations
+-- Organizations Policy: Users can only access their own organization
+DROP POLICY IF EXISTS "Organizations multi-tenant policy" ON public.organizations;
+CREATE POLICY "Organizations multi-tenant policy" ON public.organizations
     FOR ALL
     USING (id = public.get_auth_org_id())
     WITH CHECK (id = public.get_auth_org_id());
 
--- Bank Accounts
-DROP POLICY IF EXISTS "Bank accounts isolation policy" ON public.bank_accounts;
-CREATE POLICY "Bank accounts isolation policy" ON public.bank_accounts
+-- Bank Accounts Policy
+DROP POLICY IF EXISTS "Bank accounts multi-tenant policy" ON public.bank_accounts;
+CREATE POLICY "Bank accounts multi-tenant policy" ON public.bank_accounts
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());
 
--- Customers
-DROP POLICY IF EXISTS "Customers isolation policy" ON public.customers;
-CREATE POLICY "Customers isolation policy" ON public.customers
+-- Customers Policy
+DROP POLICY IF EXISTS "Customers multi-tenant policy" ON public.customers;
+CREATE POLICY "Customers multi-tenant policy" ON public.customers
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());
 
--- Products
-DROP POLICY IF EXISTS "Products isolation policy" ON public.products;
-CREATE POLICY "Products isolation policy" ON public.products
+-- Products Policy
+DROP POLICY IF EXISTS "Products multi-tenant policy" ON public.products;
+CREATE POLICY "Products multi-tenant policy" ON public.products
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());
 
--- Invoices
-DROP POLICY IF EXISTS "Invoices isolation policy" ON public.invoices;
-CREATE POLICY "Invoices isolation policy" ON public.invoices
+-- Invoices Policy
+DROP POLICY IF EXISTS "Invoices multi-tenant policy" ON public.invoices;
+CREATE POLICY "Invoices multi-tenant policy" ON public.invoices
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());
 
--- Invoice Items
-DROP POLICY IF EXISTS "Invoice items isolation policy" ON public.invoice_items;
-CREATE POLICY "Invoice items isolation policy" ON public.invoice_items
+-- Invoice Items Policy: Cascaded through parent invoice's organization_id
+DROP POLICY IF EXISTS "Invoice items multi-tenant policy" ON public.invoice_items;
+CREATE POLICY "Invoice items multi-tenant policy" ON public.invoice_items
     FOR ALL
     USING (invoice_id IN (SELECT id FROM public.invoices WHERE organization_id = public.get_auth_org_id()))
     WITH CHECK (invoice_id IN (SELECT id FROM public.invoices WHERE organization_id = public.get_auth_org_id()));
 
--- Payments
-DROP POLICY IF EXISTS "Payments isolation policy" ON public.payments;
-CREATE POLICY "Payments isolation policy" ON public.payments
+-- Payments Policy
+DROP POLICY IF EXISTS "Payments multi-tenant policy" ON public.payments;
+CREATE POLICY "Payments multi-tenant policy" ON public.payments
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());
 
--- Billing Letters
-DROP POLICY IF EXISTS "Billing letters isolation policy" ON public.billing_letters;
-CREATE POLICY "Billing letters isolation policy" ON public.billing_letters
+-- Billing Letters Policy
+DROP POLICY IF EXISTS "Billing letters multi-tenant policy" ON public.billing_letters;
+CREATE POLICY "Billing letters multi-tenant policy" ON public.billing_letters
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());
 
--- Documents
-DROP POLICY IF EXISTS "Documents isolation policy" ON public.documents;
-CREATE POLICY "Documents isolation policy" ON public.documents
+-- Documents Policy
+DROP POLICY IF EXISTS "Documents multi-tenant policy" ON public.documents;
+CREATE POLICY "Documents multi-tenant policy" ON public.documents
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());
 
--- Audit Logs
-DROP POLICY IF EXISTS "Audit logs isolation policy" ON public.audit_logs;
-CREATE POLICY "Audit logs isolation policy" ON public.audit_logs
+-- Audit Logs Policy
+DROP POLICY IF EXISTS "Audit logs multi-tenant policy" ON public.audit_logs;
+CREATE POLICY "Audit logs multi-tenant policy" ON public.audit_logs
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());

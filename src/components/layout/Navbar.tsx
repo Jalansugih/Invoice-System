@@ -15,6 +15,7 @@ import {
   LogOut,
   HelpCircle,
   BookOpen,
+  RefreshCw,
 } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
 
@@ -41,8 +42,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   onQuickInvoice,
   onOpenGuide,
 }) => {
-  const { user: authUser, signOut, signInDemoUser } = useAuth();
+  const { user: authUser, signOut, signInDemoUser, refreshSession } = useAuth();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const user = authUser || StorageService.getUser();
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshSession();
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
 
   const handleRoleChange = (newRole: UserRole) => {
     signInDemoUser(newRole);
@@ -163,9 +174,23 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
+        {/* Session Refresh Button */}
+        <button
+          type="button"
+          id="btn-navbar-refresh-session"
+          onClick={handleRefresh}
+          title="Segarkan Sesi Autentikasi (Refresh Session)"
+          className={`p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer ${
+            isRefreshing ? 'animate-spin text-blue-600' : ''
+          }`}
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
+
         {/* Sign Out Button */}
         <button
           type="button"
+          id="btn-navbar-signout"
           onClick={() => signOut()}
           title="Keluar Akun (Sign Out)"
           className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"

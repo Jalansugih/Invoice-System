@@ -11,6 +11,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   isConfigured: boolean;
+  isPasswordRecovery: boolean;
   signInWithPassword: (credentials: { email: string; password: string }) => Promise<{ error: Error | null; data: any }>;
   signUpWithPassword: (credentials: {
     email: string;
@@ -20,7 +21,10 @@ interface AuthContextType {
     organizationName?: string;
   }) => Promise<{ error: Error | null; data: any }>;
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
+  updateUserPassword: (password: string) => Promise<{ error: Error | null; data: any }>;
+  refreshSession: () => Promise<{ error: Error | null; data: any }>;
   signOut: () => Promise<void>;
+  setIsPasswordRecovery: (isRecovery: boolean) => void;
   signInDemoUser: (role?: UserRole) => void;
   updateUserRole: (role: UserRole) => void;
   canPerformAction: (action: 'view' | 'create_draft' | 'edit_all' | 'record_payment' | 'delete_records' | 'org_settings') => boolean;
@@ -35,6 +39,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(false);
 
   // Ensure a row exists in public.profiles for this auth user, linking them
   // to their organization. Required for Supabase RLS policies (which check
@@ -112,9 +117,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
           // 2. Listen to real-time auth state changes
           const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (_event, newSession) => {
+            async (event, newSession) => {
               if (!isMounted) return;
               
+              if (event === 'PASSWORD_RECOVERY') {
+                setIsPasswordRecovery(true);
+              }
+
               setSession(newSession);
               if (newSession?.user) {
                 setSupabaseUser(newSession.user);
@@ -341,6 +350,56 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Update Password (for Reset Password flow)
+  const updateUserPassword = async (password: string) => {
+    setLoading(true);
+    try {
+      if (!isSupabaseConfigured) {
+        setLoading(false);
+        setIsPasswordRecovery(false);
+        return { error: null, data: { user } };
+      }
+      const { data, error } = await supabase.auth.updateUser({
+        password,
+      });
+      if (error) {
+        setLoading(false);
+        return { error, data: null };
+      }
+      setIsPasswordRecovery(false);
+      setLoading(false);
+      return { error: null, data };
+    } catch (err: any) {
+      setLoading(false);
+      return { error: err, data: null };
+    }
+  };
+
+  // Explicit session refresh using Supabase Auth
+  const refreshSession = async () => {
+    try {
+      if (!isSupabaseConfigured) {
+        return { error: null, data: { session, user } };
+      }
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) {
+        return { error, data: null };
+      }
+      if (data.session) {
+        setSession(data.session);
+        if (data.session.user) {
+          setSupabaseUser(data.session.user);
+          const profile = mapSupabaseUserToProfile(data.session.user);
+          setUser(profile);
+          StorageService.setCurrentUser(profile);
+        }
+      }
+      return { error: null, data };
+    } catch (err: any) {
+      return { error: err, data: null };
+    }
+  };
+
   // Supabase signOut
   const signOut = async () => {
     setLoading(true);
@@ -352,6 +411,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(null);
       setSession(null);
       setSupabaseUser(null);
+      setIsPasswordRecovery(false);
     } catch (err) {
       console.error('Sign out error:', err);
     } finally {
@@ -425,10 +485,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         session,
         loading,
         isConfigured: isSupabaseConfigured,
+        isPasswordRecovery,
         signInWithPassword,
         signUpWithPassword,
         resetPasswordForEmail,
+        updateUserPassword,
+        refreshSession,
         signOut,
+        setIsPasswordRecovery,
         signInDemoUser,
         updateUserRole,
         canPerformAction,

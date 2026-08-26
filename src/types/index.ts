@@ -335,3 +335,6 @@ export interface AgingReceivableGroup {
   count: number;
   percentage: number;
 }
+
+// Re-export PostgreSQL Supabase Multi-Tenant Database Schema Types
+export * from './database';
