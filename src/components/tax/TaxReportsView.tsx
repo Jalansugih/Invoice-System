@@ -8,6 +8,16 @@ import {
   FiscalCorrection,
   TaxAuditLogItem,
   TaxValidationIssue,
+  IncomeStatementData,
+  BalanceSheetData,
+  CashFlowStatementData,
+  EquityChangeStatementData,
+  NotesToFinancialStatementsData,
+  AuditInspectionSummary,
+  CoretaxProgressSummary,
+  FixedAssetFiscalItem,
+  TaxCreditTransaction,
+  SpecialTaxTransaction,
 } from '../../types/tax';
 import { TaxService } from '../../lib/taxService';
 import { formatRupiah } from '../../lib/utils';
@@ -20,6 +30,12 @@ import { TaxWithholdingView } from './TaxWithholdingView';
 import { TaxCorporateIncomeView } from './TaxCorporateIncomeView';
 import { TaxReconciliationView } from './TaxReconciliationView';
 import { TaxAuditTrailView } from './TaxAuditTrailView';
+import { TaxFinancialStatementsView } from './TaxFinancialStatementsView';
+import { TaxPreflightAuditView } from './TaxPreflightAuditView';
+import { TaxDepreciationView } from './TaxDepreciationView';
+import { TaxCreditsView } from './TaxCreditsView';
+import { TaxSpecialTransactionsView } from './TaxSpecialTransactionsView';
+import { TaxCoretaxPrepView } from './TaxCoretaxPrepView';
 import { TaxConfigModal } from './TaxConfigModal';
 import { TaxTransactionModal } from './TaxTransactionModal';
 import { TaxPeriodWorkflowModal } from './TaxPeriodWorkflowModal';
@@ -44,6 +60,10 @@ import {
   ChevronDown,
   X,
   Sparkles,
+  ShieldCheck,
+  Receipt,
+  Layers,
+  Sparkle,
 } from 'lucide-react';
 
 interface TaxReportsViewProps {
@@ -52,12 +72,16 @@ interface TaxReportsViewProps {
 
 export type TaxMainTab =
   | 'dashboard'
+  | 'coretax_prep'
+  | 'preflight_audit'
+  | 'financial_statements'
+  | 'fiscal_reconciliation'
+  | 'depreciation'
+  | 'tax_credits'
+  | 'special_transactions'
   | 'ppn'
   | 'pph'
-  | 'pph_badan'
-  | 'reconciliation'
-  | 'audit_trail'
-  | 'configurations';
+  | 'audit_trail';
 
 export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvoice }) => {
   // Global Filters
@@ -81,6 +105,18 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
   const [auditLogs, setAuditLogs] = useState<TaxAuditLogItem[]>([]);
   const [validationIssues, setValidationIssues] = useState<TaxValidationIssue[]>([]);
 
+  // Extended Accounting & Coretax Data
+  const [incomeStatement, setIncomeStatement] = useState<IncomeStatementData | null>(null);
+  const [balanceSheet, setBalanceSheet] = useState<BalanceSheetData | null>(null);
+  const [cashFlow, setCashFlow] = useState<CashFlowStatementData | null>(null);
+  const [equityChange, setEquityChange] = useState<EquityChangeStatementData | null>(null);
+  const [calk, setCalk] = useState<NotesToFinancialStatementsData | null>(null);
+  const [inspectionSummary, setInspectionSummary] = useState<AuditInspectionSummary | null>(null);
+  const [coretaxProgress, setCoretaxProgress] = useState<CoretaxProgressSummary | null>(null);
+  const [fixedAssets, setFixedAssets] = useState<FixedAssetFiscalItem[]>([]);
+  const [taxCredits, setTaxCredits] = useState<TaxCreditTransaction[]>([]);
+  const [specialTxs, setSpecialTxs] = useState<SpecialTaxTransaction[]>([]);
+
   // Load all tax data
   const loadData = () => {
     const txs = TaxService.getTaxTransactions();
@@ -100,6 +136,22 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
 
     const issues = TaxService.validateTaxCompliance(selectedYear, selectedMonth);
     setValidationIssues(issues);
+
+    // Load financial statements
+    setIncomeStatement(TaxService.getIncomeStatement(selectedYear));
+    setBalanceSheet(TaxService.getBalanceSheet(selectedYear));
+    setCashFlow(TaxService.getCashFlowStatement(selectedYear));
+    setEquityChange(TaxService.getEquityChangeStatement(selectedYear));
+    setCalk(TaxService.getNotesToFinancialStatements(selectedYear));
+
+    // Load preflight audit and coretax summary
+    setInspectionSummary(TaxService.runPreflightInspection(selectedYear, selectedMonth));
+    setCoretaxProgress(TaxService.getCoretaxProgressSummary(selectedYear));
+
+    // Load assets, credits, and special transactions
+    setFixedAssets(TaxService.getFixedAssets());
+    setTaxCredits(TaxService.getTaxCredits(selectedYear));
+    setSpecialTxs(TaxService.getSpecialTransactions(selectedYear));
   };
 
   useEffect(() => {
@@ -132,16 +184,30 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
     { value: 12, label: '12 - Desember' },
   ];
 
-  const mainTabs = [
-    { id: 'dashboard', label: 'Dashboard Pajak', icon: Landmark },
-    { id: 'ppn', label: 'PPN (Keluaran & Masukan)', icon: Scale },
-    { id: 'pph', label: 'PPh (Unifikasi Pot/Put)', icon: Users },
-    { id: 'pph_badan', label: 'PPh Badan (Form 1771)', icon: Building2 },
-    { id: 'reconciliation', label: 'Rekonsiliasi GL vs Pajak', icon: GitCompare },
-    { id: 'audit_trail', label: 'Audit Trail & Log', icon: History },
+  const mainTabs: { id: TaxMainTab; label: string; icon: any; badge?: string; category?: string }[] = [
+    { id: 'dashboard', label: 'Pusat Kesiapan Pajak', icon: Landmark, category: 'core' },
+    { id: 'coretax_prep', label: 'Persiapan Coretax (SPT 1771)', icon: FileCheck2, badge: 'Coretax', category: 'core' },
+    { id: 'preflight_audit', label: 'Pemeriksaan Kepatuhan', icon: ShieldCheck, badge: inspectionSummary && inspectionSummary.passedChecks < inspectionSummary.totalChecks ? `${inspectionSummary.totalChecks - inspectionSummary.passedChecks} Catatan` : undefined, category: 'core' },
+    { id: 'financial_statements', label: '5 Laporan Keuangan', icon: FileText, category: 'accounting' },
+    { id: 'fiscal_reconciliation', label: 'Rekonsiliasi Fiskal', icon: GitCompare, category: 'tax' },
+    { id: 'depreciation', label: 'Penyusutan Fiskal (PMK 72)', icon: Building2, category: 'accounting' },
+    { id: 'tax_credits', label: 'Kredit Pajak (PPh 22/23/25)', icon: Receipt, category: 'tax' },
+    { id: 'special_transactions', label: 'Transaksi Khusus & Afiliasi', icon: AlertTriangle, category: 'tax' },
+    { id: 'ppn', label: 'PPN (e-Faktur)', icon: Scale, category: 'periodic' },
+    { id: 'pph', label: 'PPh Unifikasi (e-Bupot)', icon: Users, category: 'periodic' },
+    { id: 'audit_trail', label: 'Audit Trail & Log', icon: History, category: 'system' },
   ];
 
-  if (!periodSummary || !citSummary) return null;
+  if (!periodSummary || !citSummary || !incomeStatement || !balanceSheet || !cashFlow || !equityChange || !calk || !inspectionSummary || !coretaxProgress) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <div className="flex items-center gap-2 text-slate-500 text-sm">
+          <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+          <span>Menyiapkan pusat rekonsiliasi dan laporan pajak...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -157,7 +223,7 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
       )}
 
       {/* Main Header & Global Filter Bar */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-5">
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
@@ -166,10 +232,10 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
               </div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900">
-                  Laporan Perpajakan Perusahaan Indonesia
+                  Pusat Monitoring, Rekonsiliasi & Persiapan Coretax
                 </h1>
                 <p className="text-xs text-slate-500">
-                  Sistem manajemen PPN e-Faktur, PPh e-Bupot Unifikasi, Rekonsiliasi Fiskal & SPT Tahunan 1771
+                  Pembukuan otomatis, 5 laporan keuangan terpadu, audit pra-pelaporan, dan rekonsiliasi SPT Tahunan PPh Badan
                 </p>
               </div>
             </div>
@@ -225,7 +291,7 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                 className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800"
               >
-                <option value={2026}>2026</option>
+                <option value={2026}>2026 (Tahun Berjalan)</option>
                 <option value={2025}>2025</option>
               </select>
             </div>
@@ -268,7 +334,9 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
                 {periodSummary.status === 'filed' && 'Sudah Dilaporkan (BPE)'}
               </Badge>
               {periodSummary.isLocked && (
-                <Lock className="w-3.5 h-3.5 text-slate-500" title="Periode Terkunci" />
+                <span title="Periode Terkunci" className="inline-flex items-center">
+                  <Lock className="w-3.5 h-3.5 text-slate-500" />
+                </span>
               )}
             </div>
           </div>
@@ -340,7 +408,7 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as TaxMainTab)}
-              className={`flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                 isSelected
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
@@ -348,6 +416,17 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
             >
               <Icon className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-400'}`} />
               <span>{tab.label}</span>
+              {tab.badge && (
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    isSelected
+                      ? 'bg-white/20 text-white'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {tab.badge}
+                </span>
+              )}
             </button>
           );
         })}
@@ -359,11 +438,78 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
           periodSummary={periodSummary}
           citSummary={citSummary}
           recentTransactions={transactions}
+          incomeStatement={incomeStatement}
+          balanceSheet={balanceSheet}
+          inspectionSummary={inspectionSummary}
+          coretaxProgress={coretaxProgress}
           onNavigateTab={setActiveTab}
           onOpenNewModal={() => setIsNewTxModalOpen(true)}
           onOpenWorkflowModal={() => setIsWorkflowModalOpen(true)}
           onOpenConfigModal={() => setIsConfigModalOpen(true)}
           onDrilldown={(tx) => setDrilldownTx(tx)}
+        />
+      )}
+
+      {activeTab === 'coretax_prep' && (
+        <TaxCoretaxPrepView
+          year={selectedYear}
+          progress={coretaxProgress}
+          citSummary={citSummary}
+          incomeStatement={incomeStatement}
+          balanceSheet={balanceSheet}
+          onNavigateTab={setActiveTab}
+        />
+      )}
+
+      {activeTab === 'preflight_audit' && (
+        <TaxPreflightAuditView
+          summary={inspectionSummary}
+          onNavigateTab={setActiveTab}
+          onRefresh={loadData}
+        />
+      )}
+
+      {activeTab === 'financial_statements' && (
+        <TaxFinancialStatementsView
+          year={selectedYear}
+          incomeStatement={incomeStatement}
+          balanceSheet={balanceSheet}
+          cashFlow={cashFlow}
+          equityChange={equityChange}
+          calk={calk}
+          onNavigateTab={setActiveTab}
+        />
+      )}
+
+      {activeTab === 'fiscal_reconciliation' && (
+        <TaxCorporateIncomeView
+          year={selectedYear}
+          citSummary={citSummary}
+          corrections={fiscalCorrections}
+          onRefresh={loadData}
+        />
+      )}
+
+      {activeTab === 'depreciation' && (
+        <TaxDepreciationView
+          assets={fixedAssets}
+          year={selectedYear}
+        />
+      )}
+
+      {activeTab === 'tax_credits' && (
+        <TaxCreditsView
+          credits={taxCredits}
+          year={selectedYear}
+          onAddCredit={() => setIsNewTxModalOpen(true)}
+        />
+      )}
+
+      {activeTab === 'special_transactions' && (
+        <TaxSpecialTransactionsView
+          transactions={specialTxs}
+          year={selectedYear}
+          onAddTransaction={() => setIsNewTxModalOpen(true)}
         />
       )}
 
@@ -385,24 +531,6 @@ export const TaxReportsView: React.FC<TaxReportsViewProps> = ({ onViewSourceInvo
           onDrilldown={(tx) => setDrilldownTx(tx)}
           onOpenNewModal={() => setIsNewTxModalOpen(true)}
           onOpenConfigModal={() => setIsConfigModalOpen(true)}
-        />
-      )}
-
-      {activeTab === 'pph_badan' && (
-        <TaxCorporateIncomeView
-          year={selectedYear}
-          citSummary={citSummary}
-          corrections={fiscalCorrections}
-          onRefresh={loadData}
-        />
-      )}
-
-      {activeTab === 'reconciliation' && (
-        <TaxReconciliationView
-          reconciliations={reconciliations}
-          year={selectedYear}
-          month={selectedMonth}
-          onViewSourceInvoice={onViewSourceInvoice}
         />
       )}
 

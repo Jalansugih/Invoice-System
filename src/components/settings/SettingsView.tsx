@@ -64,6 +64,11 @@ export const SettingsView: React.FC = () => {
     setMigrationResult(null);
 
     try {
+      // Repair any legacy non-UUID product ids before pushing to Supabase,
+      // otherwise the upsert fails silently for every product created
+      // before this fix.
+      StorageService.repairLegacyProductIds();
+
       const payload = {
         organization: StorageService.getOrganization(),
         customers: StorageService.getCustomers(),

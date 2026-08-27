@@ -1,0 +1,11 @@
+{
+  "remoteName": "origin",
+  "projects": [
+    {
+      "id": "prj_C1aSGCbwy4dCz8BgjLEhWovJdcoB",
+      "name": "invoice-system",
+      "directory": ".",
+      "orgId": "team_Oh0mPW9yVpwidpZoD5KvAzHx"
+    }
+  ]
+}

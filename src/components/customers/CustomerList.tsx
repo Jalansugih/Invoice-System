@@ -374,10 +374,16 @@ export const CustomerList: React.FC<CustomerListProps> = ({
       {/* Customer Detail Drawer / Ledger */}
       {selectedCustomerForDetail && (
         <CustomerDetailDrawer
+          isOpen={!!selectedCustomerForDetail}
           customer={selectedCustomerForDetail}
           invoices={invoices.filter((i) => i.customerId === selectedCustomerForDetail.id)}
           payments={payments.filter((p) => p.customerId === selectedCustomerForDetail.id)}
           onClose={() => setSelectedCustomerForDetail(null)}
+          onEditCustomer={(customer) => {
+            setCustomerToEdit(customer);
+            setIsFormOpen(true);
+            setSelectedCustomerForDetail(null);
+          }}
           onViewInvoice={onViewInvoice}
           onCreateInvoice={() => {
             onCreateInvoiceForCustomer(selectedCustomerForDetail);

@@ -30,24 +30,45 @@ import { SettingsView } from './components/settings/SettingsView';
 import { UserGuideModal } from './components/guide/UserGuideModal';
 
 export default function App() {
-  const { user, loading } = useAuth();
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
+  const { user, loading, signOut } = useAuth();
+  
+  // Read initial route from window.location.pathname
+  const getInitialTabFromUrl = (): string => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+    const validTabs = [
+      'dashboard',
+      'invoices',
+      'customers',
+      'products',
+      'payments',
+      'letters',
+      'billing_letters',
+      'reconciliation',
+      'tax',
+      'tax_reports',
+      'documents',
+      'reports',
+      'audit',
+      'settings',
+    ];
+    if (path === 'letters') return 'billing_letters';
+    if (path === 'tax') return 'tax_reports';
+    if (validTabs.includes(path)) return path;
+    return 'dashboard';
+  };
+
+  const [currentTab, setCurrentTab] = useState<string>(getInitialTabFromUrl);
+  const [showExplicitLogin, setShowExplicitLogin] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const path = window.location.pathname.toLowerCase();
+    return path === '/login' || path === '/auth' || path.startsWith('/login');
+  });
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState<boolean>(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
-
-  // Auto open guide on very first time use
-  useEffect(() => {
-    try {
-      const hasSeen = localStorage.getItem('billingflow_has_seen_guide');
-      if (!hasSeen) {
-        setIsGuideModalOpen(true);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
 
   // Sub-detail / Print views
   const [viewingInvoiceId, setViewingInvoiceId] = useState<string | null>(null);
@@ -67,13 +88,52 @@ export default function App() {
 
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState<boolean>(false);
 
-  // Reset drill-down views on top-level navigation tab switch
+  // Sync browser URL with current tab and popstate events
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+      if (path === 'login' || path === 'auth') {
+        setShowExplicitLogin(true);
+      } else {
+        setShowExplicitLogin(false);
+        const nextTab = getInitialTabFromUrl();
+        setCurrentTab(nextTab);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Update browser URL bar when tab changes
   const handleSelectTab = (tab: string) => {
     setCurrentTab(tab);
+    setShowExplicitLogin(false);
     setViewingInvoiceId(null);
     setViewingLetterId(null);
     setViewingReceiptPayment(null);
+
+    try {
+      const targetUrl = tab === 'dashboard' ? '/' : `/${tab}`;
+      if (window.location.pathname !== targetUrl) {
+        window.history.pushState({ tab }, '', targetUrl);
+      }
+    } catch {
+      // ignore
+    }
   };
+
+  // Auto open guide on very first time use
+  useEffect(() => {
+    try {
+      const hasSeen = localStorage.getItem('billingflow_has_seen_guide');
+      if (!hasSeen) {
+        setIsGuideModalOpen(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Keyboard shortcut Ctrl+K / Cmd+K for search
   useEffect(() => {
@@ -115,8 +175,21 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <Login />;
+  if (!user || showExplicitLogin) {
+    return (
+      <Login
+        onSuccess={() => {
+          setShowExplicitLogin(false);
+          try {
+            if (window.location.pathname === '/login' || window.location.pathname === '/auth') {
+              window.history.replaceState(null, '', '/');
+            }
+          } catch {
+            // ignore
+          }
+        }}
+      />
+    );
   }
 
   return (
@@ -323,17 +396,13 @@ export default function App() {
       <GlobalSearchModal
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
-        onSelectResult={(type, id) => {
-          if (type === 'invoice') {
-            setCurrentTab('invoices');
+        onNavigate={(tab, id) => {
+          setIsSearchModalOpen(false);
+          setCurrentTab(tab);
+          if (tab === 'invoices' && id) {
             setViewingInvoiceId(id);
-          } else if (type === 'customer') {
-            setCurrentTab('customers');
-          } else if (type === 'letter') {
-            setCurrentTab('billing_letters');
+          } else if (tab === 'billing_letters' && id) {
             setViewingLetterId(id);
-          } else if (type === 'product') {
-            setCurrentTab('products');
           }
         }}
       />

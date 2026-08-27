@@ -5,13 +5,26 @@ import { StorageService } from '../../lib/storage';
 import { SupabaseService } from '../../lib/supabaseService';
 import { UserProfile, UserRole } from '../../types';
 
+export interface BackendHealthStatus {
+  isConfigured: boolean;
+  connected: boolean;
+  authenticated: boolean;
+  latencyMs?: number;
+  url?: string;
+  userEmail?: string;
+  organizationId?: string;
+  error?: string;
+}
+
 interface AuthContextType {
   user: UserProfile | null;
   supabaseUser: User | null;
   session: Session | null;
   loading: boolean;
   isConfigured: boolean;
+  backendHealth: BackendHealthStatus;
   isPasswordRecovery: boolean;
+  checkBackendHealth: () => Promise<BackendHealthStatus>;
   signInWithPassword: (credentials: { email: string; password: string }) => Promise<{ error: Error | null; data: any }>;
   signUpWithPassword: (credentials: {
     email: string;
@@ -34,32 +47,140 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const DEMO_STORAGE_KEY = 'billingflow_auth_demo_user';
 
+/**
+ * Translates Supabase Auth error messages into actionable, clear Indonesian explanations.
+ */
+export function translateAuthError(error: any): string {
+  if (!error) return 'Terjadi kesalahan sistem yang tidak diketahui.';
+  const msg = typeof error === 'string' ? error : error.message || '';
+  const lower = msg.toLowerCase();
+
+  if (lower.includes('invalid login credentials') || lower.includes('invalid_credentials')) {
+    return 'Email atau kata sandi tidak sesuai. Silakan periksa kembali kredensial Anda.';
+  }
+  if (lower.includes('email not confirmed') || lower.includes('email_not_confirmed')) {
+    return 'Alamat email belum dikonfirmasi. Silakan periksa kotak masuk/spam email Anda, atau matikan opsi "Confirm email" pada pengaturan Auth dashboard Supabase.';
+  }
+  if (lower.includes('user already registered') || lower.includes('already registered')) {
+    return 'Email ini sudah terdaftar. Silakan beralih ke tab "Masuk (Sign In)" untuk login.';
+  }
+  if (lower.includes('password should be at least 6') || lower.includes('weak_password')) {
+    return 'Kata sandi terlalu pendek. Masukkan minimal 6 karakter.';
+  }
+  if (lower.includes('rate limit') || lower.includes('over_email_send_rate_limit')) {
+    return 'Terlalu banyak percobaan dalam waktu singkat. Harap tunggu 1-2 menit sebelum mencoba kembali.';
+  }
+  if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('connection')) {
+    return 'Gagal tersambung ke server Supabase. Pastikan URL Supabase valid dan koneksi internet stabil.';
+  }
+  if (lower.includes('invalid email') || lower.includes('unable to validate email')) {
+    return 'Format alamat email tidak valid. Pastikan penulisan email sudah benar (contoh: nama@perusahaan.com).';
+  }
+  if (lower.includes('jwt') || lower.includes('token expired')) {
+    return 'Sesi autentikasi telah berakhir. Silakan masuk kembali.';
+  }
+
+  return msg || 'Terjadi kesalahan saat memproses permintaan autentikasi.';
+}
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(false);
+  const [backendHealth, setBackendHealth] = useState<BackendHealthStatus>({
+    isConfigured: isSupabaseConfigured,
+    connected: false,
+    authenticated: false,
+    url: import.meta.env.VITE_SUPABASE_URL || 'Local / In-Memory Demo',
+  });
 
-  // Ensure a row exists in public.profiles for this auth user, linking them
-  // to their organization. Required for Supabase RLS policies (which check
-  // profiles.organization_id) to allow any read/write at all.
-  const ensureProfile = async (sbUser: User) => {
-    try {
-      const meta = sbUser.user_metadata || {};
-      const orgId = meta.organization_id;
-      if (!orgId) return;
+  // Ensure organization and profile exist in Supabase PostgreSQL
+  const ensureProfile = async (sbUser: User, fallbackOrgName?: string): Promise<UserProfile> => {
+    const meta = sbUser.user_metadata || {};
+    let orgId = meta.organization_id;
 
-      await supabase.from('profiles').upsert({
-        id: sbUser.id,
-        organization_id: orgId,
-        name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'User',
-        email: sbUser.email,
-        role: meta.role || 'owner',
-      });
-    } catch (e) {
-      console.error('Gagal menyiapkan profil organisasi di Supabase:', e);
+    // Generate valid UUID for organization if missing
+    if (!orgId) {
+      orgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'org-001';
     }
+
+    const orgName = fallbackOrgName || meta.organization_name || 'PT BillingFlow Solusi Finansial';
+    const fullName = meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Pengguna';
+    const userRole = (meta.role as UserRole) || 'owner';
+
+    if (isSupabaseConfigured) {
+      try {
+        // 1. Ensure Organization row exists first (satisfying Foreign Key constraint)
+        const { data: existingOrg } = await supabase
+          .from('organizations')
+          .select('id, name')
+          .eq('id', orgId)
+          .maybeSingle();
+
+        if (!existingOrg) {
+          const currentOrg = StorageService.getOrganization();
+          await supabase.from('organizations').upsert({
+            id: orgId,
+            name: orgName,
+            email: sbUser.email || currentOrg.email,
+            phone: currentOrg.phone || null,
+            address: currentOrg.address || null,
+            city: currentOrg.city || null,
+            province: currentOrg.province || null,
+            postal_code: currentOrg.postalCode || null,
+            npwp: currentOrg.npwp || null,
+            website: currentOrg.website || null,
+            default_tax_rate: currentOrg.defaultTaxRate || 11,
+            default_currency: currentOrg.defaultCurrency || 'IDR',
+            timezone: currentOrg.timezone || 'Asia/Jakarta',
+            invoice_format: currentOrg.invoiceFormat || 'INV/{YEAR}/{MONTH}/{NUMBER}',
+            billing_letter_format: currentOrg.billingLetterFormat || 'ST/{YEAR}/{MONTH}/{NUMBER}',
+            payment_receipt_format: currentOrg.paymentReceiptFormat || 'KWT/{YEAR}/{MONTH}/{NUMBER}',
+            default_payment_terms_days: currentOrg.defaultPaymentTermsDays || 14,
+          }, { onConflict: 'id' });
+        }
+
+        // 2. Fetch or Upsert Profile in public.profiles
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id, organization_id, name, email, role, avatar_url')
+          .eq('id', sbUser.id)
+          .maybeSingle();
+
+        if (existingProfile) {
+          return {
+            id: existingProfile.id,
+            organizationId: existingProfile.organization_id || orgId,
+            name: existingProfile.name || fullName,
+            email: existingProfile.email || sbUser.email || '',
+            role: (existingProfile.role as UserRole) || userRole,
+            avatarUrl: existingProfile.avatar_url || meta.avatar_url,
+          };
+        } else {
+          await supabase.from('profiles').upsert({
+            id: sbUser.id,
+            organization_id: orgId,
+            name: fullName,
+            email: sbUser.email || '',
+            role: userRole,
+            avatar_url: meta.avatar_url || null,
+          }, { onConflict: 'id' });
+        }
+      } catch (e) {
+        console.error('[AuthProvider] Error ensuring profile and organization in Supabase:', e);
+      }
+    }
+
+    return {
+      id: sbUser.id,
+      name: fullName,
+      email: sbUser.email || '',
+      role: userRole,
+      avatarUrl: meta.avatar_url,
+      organizationId: orgId,
+    };
   };
 
   // Helper to map Supabase User metadata to app UserProfile
@@ -67,12 +188,71 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const meta = sbUser.user_metadata || {};
     return {
       id: sbUser.id,
-      name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'User',
+      name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Pengguna',
       email: sbUser.email || '',
       role: (meta.role as UserRole) || 'owner',
       avatarUrl: meta.avatar_url,
       organizationId: meta.organization_id || 'org-001',
     };
+  };
+
+  // Real-time backend connection check
+  const checkBackendHealth = async (): Promise<BackendHealthStatus> => {
+    if (!isSupabaseConfigured) {
+      const status: BackendHealthStatus = {
+        isConfigured: false,
+        connected: false,
+        authenticated: false,
+        url: 'Mode Offline / Local State',
+        error: 'VITE_SUPABASE_URL atau VITE_SUPABASE_ANON_KEY belum dikonfigurasi pada environment.',
+      };
+      setBackendHealth(status);
+      return status;
+    }
+
+    const start = performance.now();
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      const latencyMs = Math.round(performance.now() - start);
+
+      const isAuthenticated = Boolean(authData?.user && !authError);
+      let isDbConnected = true;
+      let errorMsg: string | undefined = undefined;
+
+      try {
+        const { error: dbError } = await supabase.from('organizations').select('id').limit(1);
+        if (dbError) {
+          isDbConnected = false;
+          errorMsg = dbError.message;
+        }
+      } catch (dbErr: any) {
+        isDbConnected = false;
+        errorMsg = dbErr?.message;
+      }
+
+      const status: BackendHealthStatus = {
+        isConfigured: true,
+        connected: isDbConnected,
+        authenticated: isAuthenticated,
+        latencyMs,
+        url: import.meta.env.VITE_SUPABASE_URL,
+        userEmail: authData?.user?.email,
+        error: errorMsg || (authError ? authError.message : undefined),
+      };
+
+      setBackendHealth(status);
+      return status;
+    } catch (err: any) {
+      const status: BackendHealthStatus = {
+        isConfigured: true,
+        connected: false,
+        authenticated: false,
+        url: import.meta.env.VITE_SUPABASE_URL,
+        error: err?.message || 'Gagal tersambung ke backend Supabase.',
+      };
+      setBackendHealth(status);
+      return status;
+    }
   };
 
   useEffect(() => {
@@ -81,27 +261,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const initializeAuth = async () => {
       try {
         if (isSupabaseConfigured) {
-          // 1. Retrieve current active session
-          const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+          // 1. Check health status in background without blocking initial paint
+          checkBackendHealth().catch((err) => console.warn('[AuthProvider] Health check warning:', err));
+
+          // 2. Retrieve current active session with timeout guard (2500ms max)
+          const sessionPromise = supabase.auth.getSession();
+          const timeoutPromise = new Promise<{ data: { session: null }; error: Error }>((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  data: { session: null },
+                  error: new Error('Supabase getSession timeout - falling back to local session cache'),
+                }),
+              2500
+            )
+          );
+
+          const { data: { session: initialSession }, error } = await Promise.race([sessionPromise, timeoutPromise]);
           
           if (error) {
-            console.warn('Supabase getSession error:', error.message);
+            console.warn('[AuthProvider] Supabase getSession result:', error.message);
           }
 
           if (isMounted) {
             if (initialSession?.user) {
               setSession(initialSession);
               setSupabaseUser(initialSession.user);
-              const profile = mapSupabaseUserToProfile(initialSession.user);
+              
+              const profile = await ensureProfile(initialSession.user);
               setUser(profile);
               StorageService.setCurrentUser(profile);
 
-              // Make sure our profile row exists (needed for RLS), then pull
-              // the latest customers/invoices/payments down from Supabase.
-              await ensureProfile(initialSession.user);
-              await StorageService.hydrateFromSupabase(profile.organizationId);
+              // Pull live data from Supabase in background (non-blocking)
+              StorageService.hydrateFromSupabase(profile.organizationId).catch((e) =>
+                console.warn('[AuthProvider] Background hydration note:', e)
+              );
             } else {
-              // Check if demo user was active
+              // Check if demo user was active in local storage
               const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
               if (savedDemo) {
                 try {
@@ -115,7 +311,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
 
-          // 2. Listen to real-time auth state changes
+          // 3. Listen to real-time auth state changes
           const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, newSession) => {
               if (!isMounted) return;
@@ -127,12 +323,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               setSession(newSession);
               if (newSession?.user) {
                 setSupabaseUser(newSession.user);
-                const profile = mapSupabaseUserToProfile(newSession.user);
+                const profile = await ensureProfile(newSession.user);
                 setUser(profile);
                 StorageService.setCurrentUser(profile);
                 localStorage.removeItem(DEMO_STORAGE_KEY);
-                await ensureProfile(newSession.user);
-                await StorageService.hydrateFromSupabase(profile.organizationId);
+                // Background hydrate without blocking UI
+                StorageService.hydrateFromSupabase(profile.organizationId).catch((e) =>
+                  console.warn('[AuthProvider] OnAuthChange hydration note:', e)
+                );
               } else {
                 setSupabaseUser(null);
                 const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
@@ -175,7 +373,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         }
       } catch (err) {
-        console.error('Auth initialization failed:', err);
+        console.error('[AuthProvider] Auth initialization failed:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -229,14 +427,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (error) {
         setLoading(false);
-        return { error, data: null };
+        return { error: new Error(translateAuthError(error)), data: null };
       }
 
       if (data.user) {
-        const profile = mapSupabaseUserToProfile(data.user);
+        setSupabaseUser(data.user);
+        setSession(data.session);
+        const profile = await ensureProfile(data.user);
         setUser(profile);
         StorageService.setCurrentUser(profile);
-        await ensureProfile(data.user);
+        localStorage.removeItem(DEMO_STORAGE_KEY);
+        
+        // Fetch organization data if available
+        const orgData = await SupabaseService.getOrganization(profile.organizationId);
+        if (orgData) {
+          StorageService.saveOrganization(orgData);
+        }
+
+        // Hydrate all database tables from Supabase
         await StorageService.hydrateFromSupabase(profile.organizationId);
       }
 
@@ -244,7 +452,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { error: null, data };
     } catch (err: any) {
       setLoading(false);
-      return { error: err, data: null };
+      return { error: new Error(translateAuthError(err)), data: null };
     }
   };
 
@@ -264,11 +472,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }) => {
     setLoading(true);
     try {
-      // Must be a real UUID: it's written straight into Supabase's
-      // organizations.id (uuid column) and referenced by every other table.
-      const orgId = crypto.randomUUID();
+      const orgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `org-${Date.now()}`;
+      const effectiveOrgName = organizationName || 'Perusahaan Baru';
+
       if (organizationName) {
-        StorageService.updateOrganization({ name: organizationName });
+        StorageService.updateOrganization({ name: effectiveOrgName });
       }
 
       if (!isSupabaseConfigured) {
@@ -294,36 +502,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             full_name: name,
             role,
             organization_id: orgId,
-            organization_name: organizationName || 'Perusahaan Baru',
+            organization_name: effectiveOrgName,
           },
         },
       });
 
       if (error) {
         setLoading(false);
-        return { error, data: null };
+        return { error: new Error(translateAuthError(error)), data: null };
       }
 
       if (data.user) {
-        const profile = mapSupabaseUserToProfile(data.user);
+        setSupabaseUser(data.user);
+        if (data.session) {
+          setSession(data.session);
+        }
+
+        const profile = await ensureProfile(data.user, effectiveOrgName);
         setUser(profile);
         StorageService.setCurrentUser(profile);
+        localStorage.removeItem(DEMO_STORAGE_KEY);
 
-        // Organization row must exist first: profiles.organization_id has a
-        // foreign key into it, and RLS on every other table checks profiles.
+        // Pre-create organization record in Supabase
         await SupabaseService.saveOrganization({
           ...StorageService.getOrganization(),
           id: orgId,
-          name: organizationName || 'Perusahaan Baru',
+          name: effectiveOrgName,
           email,
         });
 
-        // Only works if signUp already returned a live session (i.e. email
-        // confirmation is disabled on the Supabase project). If confirmation
-        // is required, this same call runs again on the user's first real
-        // sign-in via signInWithPassword above.
         if (data.session) {
-          await ensureProfile(data.user);
+          await StorageService.hydrateFromSupabase(profile.organizationId);
         }
       }
 
@@ -331,7 +540,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { error: null, data };
     } catch (err: any) {
       setLoading(false);
-      return { error: err, data: null };
+      return { error: new Error(translateAuthError(err)), data: null };
     }
   };
 
@@ -344,9 +553,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin,
       });
-      return { error };
+      if (error) {
+        return { error: new Error(translateAuthError(error)) };
+      }
+      return { error: null };
     } catch (err: any) {
-      return { error: err };
+      return { error: new Error(translateAuthError(err)) };
     }
   };
 
@@ -364,14 +576,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       if (error) {
         setLoading(false);
-        return { error, data: null };
+        return { error: new Error(translateAuthError(error)), data: null };
       }
       setIsPasswordRecovery(false);
       setLoading(false);
       return { error: null, data };
     } catch (err: any) {
       setLoading(false);
-      return { error: err, data: null };
+      return { error: new Error(translateAuthError(err)), data: null };
     }
   };
 
@@ -383,20 +595,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       const { data, error } = await supabase.auth.refreshSession();
       if (error) {
-        return { error, data: null };
+        return { error: new Error(translateAuthError(error)), data: null };
       }
       if (data.session) {
         setSession(data.session);
         if (data.session.user) {
           setSupabaseUser(data.session.user);
-          const profile = mapSupabaseUserToProfile(data.session.user);
+          const profile = await ensureProfile(data.session.user);
           setUser(profile);
           StorageService.setCurrentUser(profile);
         }
       }
       return { error: null, data };
     } catch (err: any) {
-      return { error: err, data: null };
+      return { error: new Error(translateAuthError(err)), data: null };
     }
   };
 
@@ -413,7 +625,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSupabaseUser(null);
       setIsPasswordRecovery(false);
     } catch (err) {
-      console.error('Sign out error:', err);
+      console.error('[AuthProvider] Sign out error:', err);
     } finally {
       setLoading(false);
     }
@@ -485,7 +697,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         session,
         loading,
         isConfigured: isSupabaseConfigured,
+        backendHealth,
         isPasswordRecovery,
+        checkBackendHealth,
         signInWithPassword,
         signUpWithPassword,
         resetPasswordForEmail,

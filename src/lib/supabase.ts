@@ -19,6 +19,9 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: typeof window !== 'undefined' && Boolean(window.location?.hash?.includes('access_token')),
+  },
+  global: {
+    fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
   },
 });

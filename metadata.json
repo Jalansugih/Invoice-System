@@ -1,6 +1,6 @@
 {
-  "name": "Remix Remix BillingFlow",
-  "description": "Sistem Faktur, Penagihan & Keuangan Multi-Tenant Enterprise dengan backend Supabase PostgreSQL, Row Level Security (RLS), rekonsiliasi kas bank otomatis, dan kepatuhan pajak DJP.",
+  "name": "Remix Invoice-System",
+  "description": "Imported from GitHub: Jalansugih/Invoice-System",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

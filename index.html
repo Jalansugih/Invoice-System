@@ -1,24 +1,6 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <script>
-      // Safe fetch descriptor patch for sandboxed iframe environments
-      try {
-        let _customFetch = window.fetch ? window.fetch.bind(window) : undefined;
-        Object.defineProperty(window, 'fetch', {
-          get() {
-            return _customFetch;
-          },
-          set(val) {
-            _customFetch = val;
-          },
-          configurable: true,
-          enumerable: true,
-        });
-      } catch (e) {
-        // Fallback if property is not configurable
-      }
-    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BillingFlow — Invoice & Document Billing Management</title>
@@ -31,6 +13,35 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet" />
+    
+    <!-- Polyfill / Window fetch getter safety patch -->
+    <script>
+      (function() {
+        try {
+          var nativeFetch = window.fetch;
+          if (typeof nativeFetch === 'function') {
+            var activeFetch = nativeFetch;
+            try {
+              Object.defineProperty(window, 'fetch', {
+                get: function() { return activeFetch; },
+                set: function(fn) { activeFetch = typeof fn === 'function' ? fn : activeFetch; },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (e) {
+              try {
+                Object.defineProperty(Window.prototype, 'fetch', {
+                  get: function() { return activeFetch; },
+                  set: function(fn) { activeFetch = typeof fn === 'function' ? fn : activeFetch; },
+                  configurable: true,
+                  enumerable: true
+                });
+              } catch (e2) {}
+            }
+          }
+        } catch (err) {}
+      })();
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased font-sans">
     <div id="root"></div>

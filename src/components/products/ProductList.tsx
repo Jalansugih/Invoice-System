@@ -7,7 +7,7 @@ import { Input } from '../ui/Input';
 import { Badge } from '../ui/Badge';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { ProductModal } from './ProductModal';
-import { Package, Search, Plus, Download, Edit2, Trash2, Tag } from 'lucide-react';
+import { Package, Search, Plus, Download, Edit2, Trash2, Tag, CloudOff, RefreshCw } from 'lucide-react';
 
 export const ProductList: React.FC = () => {
   const [products, setProducts] = useState(StorageService.getProducts());
@@ -17,6 +17,26 @@ export const ProductList: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+
+  const [syncFailureCount, setSyncFailureCount] = useState(
+    () => StorageService.getSyncFailures().filter((f) => f.table === 'products').length
+  );
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  React.useEffect(() => {
+    return StorageService.subscribeSyncStatus(() => {
+      setSyncFailureCount(StorageService.getSyncFailures().filter((f) => f.table === 'products').length);
+    });
+  }, []);
+
+  const handleRetrySync = async () => {
+    setIsRetrying(true);
+    try {
+      await StorageService.retryFailedSyncs();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   const refreshData = () => {
     setProducts(StorageService.getProducts());
@@ -80,6 +100,21 @@ export const ProductList: React.FC = () => {
           <p className="text-xs text-slate-500 mt-1">
             Katalog barang, jasa profesional, tarif maintenance, dan lisensi untuk invoice
           </p>
+          {syncFailureCount > 0 && (
+            <button
+              onClick={handleRetrySync}
+              disabled={isRetrying}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 hover:bg-amber-100 transition-colors disabled:opacity-60"
+              title="Beberapa produk belum berhasil tersimpan ke cloud (Supabase). Klik untuk coba lagi."
+            >
+              {isRetrying ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <CloudOff className="w-3.5 h-3.5" />
+              )}
+              {syncFailureCount} produk belum tersinkron ke cloud — coba lagi
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

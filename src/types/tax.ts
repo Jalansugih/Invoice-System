@@ -251,3 +251,396 @@ export interface TaxValidationIssue {
   docNumber?: string;
   actionRecommendation: string;
 }
+
+// -------------------------------------------------------------
+// 1. FINANCIAL STATEMENTS TYPES (Laporan Keuangan Standar SAK EMKM / PSAK)
+// -------------------------------------------------------------
+
+export interface FinancialAccountBreakdown {
+  code: string;
+  name: string;
+  amount: number;
+  priorAmount?: number;
+  transactionCount?: number;
+  notes?: string;
+  category?: string;
+}
+
+export interface IncomeStatementData {
+  year: number;
+  periodLabel: string;
+  
+  // Penjualan & Pendapatan
+  grossSales: number;
+  salesReturns: number;
+  salesDiscounts: number;
+  netSales: number;
+  
+  // Harga Pokok Penjualan (HPP)
+  beginningInventory: number;
+  purchases: number;
+  freightIn: number;
+  purchaseReturns: number;
+  purchaseDiscounts: number;
+  endingInventory: number;
+  cogs: number; // HPP
+  
+  grossProfit: number; // Laba Kotor
+  
+  // Beban Usaha / Operasional (Rinci)
+  salariesAndWages: number;
+  rentExpense: number;
+  utilitiesElectricityWater: number;
+  internetAndTelecom: number;
+  transportationAndTravel: number;
+  shippingAndDelivery: number;
+  marketingAndPromotion: number;
+  officeAndAdministration: number;
+  bankChargesAndFees: number;
+  depreciationExpense: number;
+  otherOperatingExpenses: number;
+  totalOperatingExpenses: number;
+  
+  operatingProfit: number; // Laba Usaha
+  
+  // Pendapatan & Beban Lain-lain
+  otherIncome: number; // e.g. Bunga deposito, keuntungan kurs
+  otherExpenses: number;
+  netOtherIncome: number;
+  
+  netProfitBeforeTax: number; // Laba Bersih Sebelum Pajak
+  estimatedTaxExpense: number; // Estimasi Beban Pajak Penghasilan
+  netProfitAfterTax: number; // Laba Bersih Setelah Pajak
+  
+  breakdowns: Record<string, FinancialAccountBreakdown[]>;
+}
+
+export interface BalanceSheetData {
+  year: number;
+  asOfDate: string;
+  
+  // Aset Lancar
+  cashOnPremises: number;
+  bankBalances: number;
+  tradeReceivables: number;
+  allowanceForBadDebts: number;
+  netTradeReceivables: number;
+  inventory: number;
+  prepaidExpenses: number;
+  prepaidTaxes: number; // PPh 22, 23, 25, PPN Masukan
+  otherCurrentAssets: number;
+  totalCurrentAssets: number;
+  
+  // Aset Tetap
+  land: number;
+  buildings: number;
+  vehicles: number;
+  equipmentAndComputers: number;
+  otherFixedAssets: number;
+  accumulatedDepreciation: number;
+  netFixedAssets: number;
+  
+  totalAssets: number;
+  
+  // Liabilitas Jangka Pendek
+  tradePayables: number;
+  taxPayables: number; // PPN Terutang, PPh 21, PPh 23, PPh 4(2)
+  accruedExpenses: number;
+  shortTermBankLoans: number;
+  otherCurrentLiabilities: number;
+  totalCurrentLiabilities: number;
+  
+  // Liabilitas Jangka Panjang
+  longTermBankLoans: number;
+  shareholderLoans: number;
+  totalLongTermLiabilities: number;
+  
+  totalLiabilities: number;
+  
+  // Ekuitas
+  paidInCapital: number;
+  retainedEarnings: number;
+  currentYearEarnings: number;
+  totalEquity: number;
+  
+  totalLiabilitiesAndEquity: number;
+  
+  // Validation Check
+  isBalanced: boolean;
+  balanceDifference: number;
+  balanceExplanation?: string;
+  
+  breakdowns: Record<string, FinancialAccountBreakdown[]>;
+}
+
+export interface EquityStatementData {
+  year: number;
+  beginningCapital: number;
+  capitalAdditions: number;
+  capitalReductions: number;
+  currentYearProfitOrLoss: number;
+  dividendsOrDrawings: number;
+  retainedEarningsBeginning: number;
+  endingRetainedEarnings: number;
+  endingEquity: number;
+}
+
+export interface CashFlowData {
+  year: number;
+  
+  // Aktivitas Operasi
+  customerReceipts: number;
+  supplierPayments: number;
+  operatingExpensesPaid: number;
+  taxesPaid: number;
+  netCashFromOperations: number;
+  
+  // Aktivitas Investasi
+  fixedAssetsPurchased: number;
+  fixedAssetsSold: number;
+  netCashFromInvesting: number;
+  
+  // Aktivitas Pendanaan
+  capitalInjections: number;
+  bankLoanProceeds: number;
+  bankLoanRepayments: number;
+  dividendsPaid: number;
+  netCashFromFinancing: number;
+  
+  beginningCashBalance: number;
+  netCashChange: number;
+  endingCashBalance: number;
+}
+
+export interface NotesToFinancialStatementsData {
+  companyProfile: {
+    name: string;
+    npwp: string;
+    address: string;
+    businessActivity: string;
+    kbliCode: string;
+    incorporationDeed: string;
+    directors: string;
+    commissioners: string;
+  };
+  accountingPolicies: {
+    basisOfPreparation: string;
+    revenueRecognition: string;
+    inventoryMethod: string;
+    depreciationPolicy: string;
+    taxationPolicy: string;
+  };
+  details: {
+    cashAndBankNotes: string;
+    receivablesNotes: string;
+    inventoryNotes: string;
+    fixedAssetsNotes: string;
+    payablesNotes: string;
+    equityNotes: string;
+    revenueNotes: string;
+    taxationNotes: string;
+    subsequentEvents: string;
+    contingencies: string;
+  };
+}
+
+// -------------------------------------------------------------
+// 2. AUTOMATED PRE-FLIGHT AUDIT & INSPECTION
+// -------------------------------------------------------------
+
+export type AuditCheckCategory =
+  | 'accounting_structure'
+  | 'sales'
+  | 'purchases'
+  | 'inventory'
+  | 'receivables'
+  | 'payables'
+  | 'assets_depreciation'
+  | 'tax_credits';
+
+export interface AuditCheckItem {
+  id: string;
+  category: AuditCheckCategory;
+  categoryLabel: string;
+  title: string;
+  description: string;
+  status: 'passed' | 'warning' | 'error';
+  isPassed: boolean;
+  errorCount: number;
+  sampleItems?: {
+    id: string;
+    code: string;
+    name: string;
+    amount?: number;
+    issue: string;
+  }[];
+  actionLabel: string;
+  actionTab: string;
+  fixGuide: string;
+}
+
+export interface AuditInspectionSummary {
+  totalChecks: number;
+  passedChecks: number;
+  warningChecks: number;
+  errorChecks: number;
+  readinessScore: number; // 0 - 100%
+  overallStatus: 'ready' | 'needs_review' | 'not_ready';
+  items: AuditCheckItem[];
+}
+
+// -------------------------------------------------------------
+// 3. FIXED ASSET & FISCAL DEPRECIATION (PMK 72/2023 & UU PPh)
+// -------------------------------------------------------------
+
+export type FiscalAssetCategory =
+  | 'group_1' // 4 tahun, 25% garis lurus / 50% saldo menurun
+  | 'group_2' // 8 tahun, 12.5% garis lurus / 25% saldo menurun
+  | 'group_3' // 16 tahun, 6.25% garis lurus / 12.5% saldo menurun
+  | 'group_4' // 20 tahun, 5% garis lurus / 10% saldo menurun
+  | 'building_permanent' // 20 tahun, 5% garis lurus
+  | 'building_non_permanent'; // 10 tahun, 10% garis lurus
+
+export interface FixedAssetItem {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  acquisitionDate: string;
+  acquisitionCost: number;
+  commercialUsefulLifeYears: number;
+  commercialMethod: 'straight_line' | 'declining_balance';
+  fiscalCategory: FiscalAssetCategory;
+  fiscalUsefulLifeYears: number;
+  fiscalMethod: 'straight_line' | 'declining_balance';
+  fiscalRate: number; // %
+  commercialDepreciationAnnual: number;
+  fiscalDepreciationAnnual: number;
+  depreciationDifference: number; // Komersial - Fiskal (Koreksi Fiskal Positif/Negatif)
+  accumulatedDepreciationCommercial: number;
+  accumulatedDepreciationFiscal: number;
+  bookValueCommercial: number;
+  bookValueFiscal: number;
+  status: 'verified' | 'needs_review';
+  notes?: string;
+}
+
+// -------------------------------------------------------------
+// 4. RELATED PARTY TRANSACTIONS (Form 1771-IIIA / IIIB)
+// -------------------------------------------------------------
+
+export type RelatedPartyRelationshipType =
+  | 'shareholding_25_plus'
+  | 'management_control'
+  | 'family_direct'
+  | 'sister_company';
+
+export interface RelatedPartyTransactionItem {
+  id: string;
+  partyName: string;
+  partyNpwp: string;
+  relationshipType: RelatedPartyRelationshipType | string;
+  relationshipLabel?: string;
+  transactionType: 'sales' | 'purchase' | 'loan_in' | 'loan_out' | 'rent' | 'service_fee' | string;
+  transactionTypeLabel?: string;
+  amount: number;
+  transactionAmount?: number;
+  armLengthPrice?: number;
+  pricingMethod: 'CUP' | 'RPM' | 'CPM' | 'TNMM' | 'PSM' | string;
+  transferPricingDocRef?: string;
+  hasTpDocumentation?: boolean;
+  status: 'documented' | 'needs_verification' | 'confirmed' | 'draft' | string;
+  notes?: string;
+  description?: string;
+  updatedAt?: string;
+}
+
+// -------------------------------------------------------------
+// 5. FLAGGED EXPENSES (Biaya Perlu Diperiksa - Potensi Non-Deductible)
+// -------------------------------------------------------------
+
+export interface FlaggedExpenseItem {
+  id: string;
+  date: string;
+  docNumber: string;
+  accountCode: string;
+  accountName: string;
+  payee: string;
+  amount: number;
+  description?: string;
+  flagCategory:
+    | 'entertainment_no_nominative'
+    | 'marketing_promotion'
+    | 'bad_debts'
+    | 'personal_expense'
+    | 'tax_penalties'
+    | 'missing_document'
+    | 'unusual_amount';
+  flagCategoryLabel: string;
+  reason: string;
+  flagReason?: string;
+  fiscalCategory?: string;
+  treatment: 'deductible' | 'positive_correction' | 'needs_verification';
+  suggestedAction?: string;
+  documentEvidenceAttached: boolean;
+  notes: string;
+}
+
+export type CashFlowStatementData = CashFlowData;
+export type EquityChangeStatementData = EquityStatementData;
+export type FixedAssetFiscalItem = FixedAssetItem;
+export type RelatedPartyTransaction = RelatedPartyTransactionItem;
+export type TaxCreditTransaction = TaxTransaction;
+export type SpecialTaxTransaction = RelatedPartyTransactionItem | FlaggedExpenseItem;
+
+// -------------------------------------------------------------
+// 6. CORETAX PREPARATION & SCHEDULE MAPPING (Formulir SPT 1771)
+// -------------------------------------------------------------
+
+export interface CoretaxScheduleMapping {
+  scheduleCode: '1771-I' | '1771-II' | '1771-III' | '1771-IV' | '1771-V' | '1771-VI' | '1771-INDUK' | string;
+  formCode?: string;
+  scheduleTitle: string;
+  title?: string;
+  mappedFieldCount: number;
+  itemCount?: number;
+  amount?: number;
+  isComplete?: boolean;
+  completionPercentage: number;
+  status: 'ready' | 'needs_review' | 'incomplete';
+  itemsSummary: string;
+}
+
+export interface CoretaxChecklistItem {
+  id: number | string;
+  title: string;
+  description: string;
+  status: 'ready' | 'needs_review' | 'incomplete';
+  actionLabel: string;
+  actionTab: string;
+}
+
+export interface CoretaxProgressSummary {
+  year: number;
+  overallReadinessPercentage: number;
+  readinessPercentage?: number;
+  status: 'ready' | 'needs_review' | 'incomplete';
+  overallStatus?: 'ready' | 'needs_review' | 'incomplete';
+  readinessLabel: 'Siap diperiksa' | 'Perlu verifikasi' | 'Belum siap dilaporkan';
+  blocks: {
+    financialStatements: { status: 'ready' | 'warning' | 'error'; label: string; score: number };
+    fiscalReconciliation: { status: 'ready' | 'warning' | 'error'; label: string; score: number };
+    taxCredits: { status: 'ready' | 'warning' | 'error'; label: string; score: number };
+    depreciation: { status: 'ready' | 'warning' | 'error'; label: string; score: number };
+    specialTransactions: { status: 'ready' | 'warning' | 'error'; label: string; score: number };
+    integrityValidation: { status: 'ready' | 'warning' | 'error'; label: string; score: number };
+    bookkeeping?: { status: 'ready' | 'warning' | 'error'; label: string; score: number } | 'ready' | 'needs_review' | 'incomplete';
+    reconciliation?: { status: 'ready' | 'warning' | 'error'; label: string; score: number } | 'ready' | 'needs_review' | 'incomplete';
+    auditChecks?: { status: 'ready' | 'warning' | 'error'; label: string; score: number } | 'ready' | 'needs_review' | 'incomplete';
+    coretaxReady?: { status: 'ready' | 'warning' | 'error'; label: string; score: number } | 'ready' | 'needs_review' | 'incomplete';
+  };
+  schedules: CoretaxScheduleMapping[];
+  scheduleStatus?: CoretaxScheduleMapping[];
+  checklist?: CoretaxChecklistItem[];
+}
+

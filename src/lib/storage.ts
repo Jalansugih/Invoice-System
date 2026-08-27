@@ -19,6 +19,36 @@ import {
 import { formatDocNumber, getDaysOverdue } from './utils';
 import { SupabaseService } from './supabaseService';
 
+/**
+ * Generates a real UUID (v4) for any entity that will be persisted to Supabase.
+ *
+ * IMPORTANT: every Postgres table in this project uses `id UUID PRIMARY KEY`.
+ * Previously this file generated ids like `prod-${Date.now()}`, which are NOT
+ * valid UUIDs. Postgres rejects those with an "invalid input syntax for type
+ * uuid" error on upsert - and because every sync call is wrapped in a
+ * try/catch that only does `console.error(...)`, every single one of those
+ * writes was failing silently. The app *looked* like it was syncing (no
+ * visible error, local cache updated fine) while nothing ever reached the
+ * database. Always use this helper for new entity ids going forward.
+ */
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback UUID v4 generator for environments without crypto.randomUUID
+  // (older browsers / non-secure contexts).
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUUID(id: string): boolean {
+  return UUID_RE.test(id);
+}
+
 const STORAGE_KEYS = {
   ORGANIZATION: 'billingflow_organization',
   USER: 'billingflow_user',
@@ -881,9 +911,117 @@ export const initialSequences = {
 };
 
 // Storage Service Wrapper
+/**
+ * Tracks entities that failed to sync to Supabase so the UI can surface a
+ * "pending sync" / "sync failed" indicator instead of losing the failure
+ * silently in the console (the previous behavior). Keyed by `${table}:${id}`.
+ */
+export interface SyncFailure {
+  table: string;
+  id: string;
+  label: string;
+  error: string;
+  failedAt: string;
+}
+
 export class StorageService {
   private static listeners: Array<() => void> = [];
   private static notifyScheduled = false;
+  private static syncFailures: Map<string, SyncFailure> = new Map();
+  private static syncStatusListeners: Array<() => void> = [];
+
+  public static subscribeSyncStatus(listener: () => void) {
+    this.syncStatusListeners.push(listener);
+    return () => {
+      this.syncStatusListeners = this.syncStatusListeners.filter((l) => l !== listener);
+    };
+  }
+
+  private static notifySyncStatus() {
+    this.syncStatusListeners.forEach((l) => {
+      try {
+        l();
+      } catch (e) {
+        console.error('Error in sync-status subscriber:', e);
+      }
+    });
+  }
+
+  /** Returns all entities currently in a failed-sync state. */
+  public static getSyncFailures(): SyncFailure[] {
+    return Array.from(this.syncFailures.values());
+  }
+
+  public static hasPendingSyncFailures(): boolean {
+    return this.syncFailures.size > 0;
+  }
+
+  private static markSyncFailure(table: string, id: string, label: string, error: unknown) {
+    const key = `${table}:${id}`;
+    this.syncFailures.set(key, {
+      table,
+      id,
+      label,
+      error: error instanceof Error ? error.message : String(error),
+      failedAt: new Date().toISOString(),
+    });
+    this.notifySyncStatus();
+  }
+
+  private static clearSyncFailure(table: string, id: string) {
+    const key = `${table}:${id}`;
+    if (this.syncFailures.delete(key)) {
+      this.notifySyncStatus();
+    }
+  }
+
+  /**
+   * Runs a Supabase sync call, and instead of only console.error-ing on
+   * failure (the old behavior across this whole file), records it so the UI
+   * can show the user something failed and let them retry.
+   */
+  private static async trackedSync(
+    table: string,
+    id: string,
+    label: string,
+    fn: () => Promise<boolean>
+  ): Promise<void> {
+    try {
+      const ok = await fn();
+      if (ok) {
+        this.clearSyncFailure(table, id);
+      } else {
+        this.markSyncFailure(table, id, label, 'Supabase menolak permintaan (lihat console untuk detail)');
+      }
+    } catch (e) {
+      console.error(`Gagal sinkron ${table} (${label}) ke Supabase:`, e);
+      this.markSyncFailure(table, id, label, e);
+    }
+  }
+
+  /** Retries every entity currently marked as failed-to-sync. */
+  public static async retryFailedSyncs(): Promise<void> {
+    const failures = this.getSyncFailures();
+    for (const f of failures) {
+      if (f.table === 'products') {
+        const product = this.getProducts().find((p) => p.id === f.id);
+        if (product) this.syncProductToSupabase(product);
+        else this.clearSyncFailure(f.table, f.id);
+      } else if (f.table === 'customers') {
+        const customer = this.getCustomers().find((c) => c.id === f.id);
+        if (customer) this.syncCustomerToSupabase(customer);
+        else this.clearSyncFailure(f.table, f.id);
+      } else if (f.table === 'invoices') {
+        const invoice = this.getInvoices().find((i) => i.id === f.id);
+        if (invoice) this.syncInvoiceToSupabase(invoice);
+        else this.clearSyncFailure(f.table, f.id);
+      } else if (f.table === 'payments') {
+        const payment = this.getPayments().find((p) => p.id === f.id);
+        if (payment) this.syncPaymentToSupabase(payment);
+        else this.clearSyncFailure(f.table, f.id);
+      }
+    }
+  }
 
   public static subscribe(listener: () => void) {
     this.listeners.push(listener);
@@ -949,8 +1087,8 @@ export class StorageService {
   private static syncCustomerToSupabase(customer: Customer) {
     const orgId = this.getSyncOrgId();
     if (!orgId) return;
-    SupabaseService.saveCustomer(customer, orgId).catch((e) =>
-      console.error('Gagal sinkron pelanggan ke Supabase:', e)
+    this.trackedSync('customers', customer.id, customer.name, () =>
+      SupabaseService.saveCustomer(customer, orgId)
     );
   }
 
@@ -963,8 +1101,8 @@ export class StorageService {
   private static syncInvoiceToSupabase(invoice: Invoice) {
     const orgId = this.getSyncOrgId();
     if (!orgId) return;
-    SupabaseService.saveInvoice(invoice, orgId).catch((e) =>
-      console.error('Gagal sinkron invoice ke Supabase:', e)
+    this.trackedSync('invoices', invoice.id, invoice.invoiceNumber || invoice.id, () =>
+      SupabaseService.saveInvoice(invoice, orgId)
     );
   }
 
@@ -977,8 +1115,8 @@ export class StorageService {
   private static syncPaymentToSupabase(payment: Payment) {
     const orgId = this.getSyncOrgId();
     if (!orgId) return;
-    SupabaseService.savePayment(payment, orgId).catch((e) =>
-      console.error('Gagal sinkron pembayaran ke Supabase:', e)
+    this.trackedSync('payments', payment.id, payment.id, () =>
+      SupabaseService.savePayment(payment, orgId)
     );
   }
 
@@ -988,15 +1126,77 @@ export class StorageService {
     );
   }
 
+  private static syncProductToSupabase(product: Product) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return;
+    this.trackedSync('products', product.id, product.name, () =>
+      SupabaseService.saveProduct(product, orgId)
+    );
+  }
+
+  private static syncProductDeleteToSupabase(id: string) {
+    SupabaseService.deleteProduct(id).catch((e) =>
+      console.error('Gagal menghapus produk di Supabase:', e)
+    );
+  }
+
   /**
-   * Pulls customers, invoices, and payments down from Supabase and overwrites
-   * the local cache, so a fresh browser/device sees real data instead of the
-   * seeded demo dataset. Only overwrites once we've confirmed we're actually
-   * connected & authenticated, so a transient network hiccup never wipes the
-   * local cache back to empty.
+   * Pulls customers, invoices, payments, and products down from Supabase and
+   * overwrites the local cache, so a fresh browser/device sees real data
+   * instead of the seeded demo dataset. Only overwrites once we've confirmed
+   * we're actually connected & authenticated, so a transient network hiccup
+   * never wipes the local cache back to empty.
    */
+  /**
+   * One-time repair for product records created before this file generated
+   * proper UUIDs (e.g. `prod-1735000000000`). Those ids can never be upserted
+   * into Supabase's `products.id UUID` column, so this rewrites them to real
+   * UUIDs and cascades the change into any invoice line items that reference
+   * the old id via `productId`. Safe to call repeatedly - it's a no-op once
+   * every id is already a valid UUID.
+   */
+  public static repairLegacyProductIds(): void {
+    const products = this.getProducts();
+    const idMap = new Map<string, string>();
+    const fixedProducts = products.map((p) => {
+      if (isValidUUID(p.id)) return p;
+      const newId = generateId();
+      idMap.set(p.id, newId);
+      return { ...p, id: newId };
+    });
+
+    if (idMap.size === 0) return;
+
+    this.setItem(STORAGE_KEYS.PRODUCTS, fixedProducts);
+
+    const invoices = this.getItem<Invoice[]>(STORAGE_KEYS.INVOICES, initialInvoices);
+    let invoicesChanged = false;
+    const fixedInvoices = invoices.map((inv) => {
+      if (!inv.items || inv.items.length === 0) return inv;
+      let itemsChanged = false;
+      const items = inv.items.map((item) => {
+        if (item.productId && idMap.has(item.productId)) {
+          itemsChanged = true;
+          return { ...item, productId: idMap.get(item.productId) };
+        }
+        return item;
+      });
+      if (itemsChanged) {
+        invoicesChanged = true;
+        return { ...inv, items };
+      }
+      return inv;
+    });
+    if (invoicesChanged) {
+      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(fixedInvoices));
+    }
+
+    console.info(`Memperbaiki ${idMap.size} ID produk lama agar kompatibel dengan Supabase.`);
+  }
+
   public static async hydrateFromSupabase(organizationId?: string | null): Promise<boolean> {
     try {
+      this.repairLegacyProductIds();
       const status = await SupabaseService.checkConnection();
       if (!status.connected || !status.authenticated) {
         return false;
@@ -1005,15 +1205,22 @@ export class StorageService {
       const orgId = organizationId || this.getSyncOrgId();
       if (!orgId) return false;
 
-      const [customers, invoices, payments] = await Promise.all([
+      const [customers, invoices, payments, products] = await Promise.all([
         SupabaseService.fetchCustomers(orgId),
         SupabaseService.fetchInvoices(orgId),
         SupabaseService.fetchPayments(orgId),
+        SupabaseService.fetchProducts(orgId),
       ]);
 
       localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
       localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
       localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
+      // Products: only overwrite the local cache if Supabase actually
+      // returned something (or we know the org genuinely has none yet).
+      // An empty array here could also mean fetchProducts swallowed an
+      // error internally, so we only trust it once connection+auth are
+      // confirmed above.
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
       this.recalculateCustomerBalances();
       this.notify();
       return true;
@@ -1099,7 +1306,7 @@ export class StorageService {
       this.updateSequences({ customer: newSeq });
       customer = {
         ...customerData,
-        id: `cust-${Date.now()}`,
+        id: generateId(),
         code: customerData.code || `CUST-${String(newSeq).padStart(3, '0')}`,
         createdAt: new Date().toISOString(),
         totalInvoiced: 0,
@@ -1151,13 +1358,14 @@ export class StorageService {
       this.updateSequences({ product: newSeq });
       product = {
         ...productData,
-        id: `prod-${Date.now()}`,
+        id: generateId(),
       };
       products.unshift(product);
       this.addAuditLog('create', 'products', product.id, product.name, `Menambahkan produk/jasa baru: ${product.name}`);
     }
 
     this.setItem(STORAGE_KEYS.PRODUCTS, products);
+    this.syncProductToSupabase(product);
     return product;
   }
 
@@ -1168,6 +1376,7 @@ export class StorageService {
     const filtered = products.filter((p) => p.id !== id);
     this.setItem(STORAGE_KEYS.PRODUCTS, filtered);
     this.addAuditLog('delete', 'products', id, target.name, `Menghapus master produk: ${target.name}`);
+    this.syncProductDeleteToSupabase(id);
     return true;
   }
 
@@ -1278,7 +1487,7 @@ export class StorageService {
       const invoiceNumber = formatDocNumber(org.invoiceFormat, newSeq);
 
       invoice = {
-        id: `inv-${Date.now()}`,
+        id: generateId(),
         invoiceNumber,
         customerId: customer.id,
         customerName: customer.name,
@@ -1419,7 +1628,7 @@ export class StorageService {
     const destinationBank = paymentData.destinationBank || org.bankAccounts.find(b => b.id === paymentData.bankAccountId)?.bankName || 'Bank Transfer';
 
     const payment: Payment = {
-      id: `pay-${Date.now()}`,
+      id: generateId(),
       paymentNumber,
       invoiceId: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
@@ -1563,7 +1772,7 @@ export class StorageService {
     const overdueDays = getDaysOverdue(invoice.dueDate);
 
     const letter: BillingLetter = {
-      id: `bl-${Date.now()}`,
+      id: generateId(),
       letterNumber,
       letterType: data.letterType,
       invoiceId: invoice.id,
@@ -1641,7 +1850,7 @@ export class StorageService {
     const overdueDays = getDaysOverdue(invoice.dueDate);
 
     const letter: BillingLetter = {
-      id: `bl-${Date.now()}`,
+      id: generateId(),
       letterNumber,
       letterType: data.letterType,
       invoiceId: invoice.id,
@@ -1707,7 +1916,7 @@ export class StorageService {
     const docs = this.getDocuments();
     const newDoc: DocumentItem = {
       ...doc,
-      id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: generateId(),
       createdAt: new Date().toISOString(),
     };
     docs.unshift(newDoc);
@@ -1730,7 +1939,7 @@ export class StorageService {
     const user = this.getUser();
     const logs = this.getAuditLogs();
     const newLog: AuditLog = {
-      id: `audit-${Date.now()}`,
+      id: generateId(),
       userId: user.id,
       userName: user.name,
       userRole: user.role,
