@@ -1,27 +1,23 @@
-import { createClient } from '@supabase/supabase-js';
-import { Database } from '../types/database';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const envUrl = import.meta.env.VITE_SUPABASE_URL;
-const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const isSupabaseConfigured = Boolean(
-  envUrl &&
-  envKey &&
-  envUrl.startsWith('http') &&
-  !envUrl.includes('placeholder')
-);
+export const isSupabaseConfigured =
+  Boolean(supabaseUrl && supabaseAnonKey);
 
-// Fallback to avoid crash if environment variables are not set during initial run
-const supabaseUrl = isSupabaseConfigured ? envUrl : 'https://billingflow-demo.supabase.co';
-const supabaseAnonKey = isSupabaseConfigured ? envKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy';
-
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: typeof window !== 'undefined' && Boolean(window.location?.hash?.includes('access_token')),
-  },
-  global: {
-    fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
-  },
-});
+export const supabase: SupabaseClient | null =
+  isSupabaseConfigured
+    ? createClient(
+        supabaseUrl as string,
+        supabaseAnonKey as string,
+        {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+          },
+        }
+      )
+    : null;
