@@ -75,7 +75,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     if (type === 'half') setAmount(Math.round(selectedInvoice.outstandingAmount / 2));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invoiceId) {
       alert('Pilih faktur/invoice yang akan dibayarkan.');
@@ -94,7 +94,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const saved = StorageService.recordPayment({
+      const saved = await StorageService.recordPayment({
         invoiceId,
         paymentDate,
         amount: Number(amount),

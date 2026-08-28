@@ -92,8 +92,8 @@ export const BankReconciliationView: React.FC<BankReconciliationViewProps> = ({
   };
 
   // One-click Batch Reconcile
-  const handleBatchAutoReconcile = () => {
-    const res = StorageService.autoReconcileAllMatched(85);
+  const handleBatchAutoReconcile = async () => {
+    const res = await StorageService.autoReconcileAllMatched(85);
     loadData();
     if (res.reconciledCount > 0) {
       showToast(
@@ -117,13 +117,13 @@ export const BankReconciliationView: React.FC<BankReconciliationViewProps> = ({
   };
 
   // Quick single transaction reconcile
-  const handleQuickReconcile = (tx: BankTransaction) => {
+  const handleQuickReconcile = async (tx: BankTransaction) => {
     if (!tx.matchedInvoiceId) {
       setManualMatchTx(tx);
       return;
     }
     try {
-      const res = StorageService.reconcileTransaction(tx.id, tx.matchedInvoiceId);
+      const res = await StorageService.reconcileTransaction(tx.id, tx.matchedInvoiceId);
       loadData();
       showToast(res.message);
     } catch (err: any) {

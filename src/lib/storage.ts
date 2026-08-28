@@ -31,7 +31,7 @@ import { SupabaseService } from './supabaseService';
  * visible error, local cache updated fine) while nothing ever reached the
  * database. Always use this helper for new entity ids going forward.
  */
-function generateId(): string {
+export function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
@@ -1019,6 +1019,18 @@ export class StorageService {
         const payment = this.getPayments().find((p) => p.id === f.id);
         if (payment) this.syncPaymentToSupabase(payment);
         else this.clearSyncFailure(f.table, f.id);
+      } else if (f.table === 'billing_letters') {
+        const letter = this.getBillingLetters().find((l) => l.id === f.id);
+        if (letter) this.syncBillingLetterToSupabase(letter);
+        else this.clearSyncFailure(f.table, f.id);
+      } else if (f.table === 'documents') {
+        const doc = this.getDocuments().find((d) => d.id === f.id);
+        if (doc) this.syncDocumentToSupabase(doc);
+        else this.clearSyncFailure(f.table, f.id);
+      } else if (f.table === 'organizations') {
+        const org = this.getOrganization();
+        if (org.id === f.id) this.syncOrganizationToSupabase(org);
+        else this.clearSyncFailure(f.table, f.id);
       }
     }
   }
@@ -1140,6 +1152,42 @@ export class StorageService {
     );
   }
 
+  private static syncBillingLetterToSupabase(letter: BillingLetter) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return;
+    this.trackedSync('billing_letters', letter.id, letter.letterNumber, () =>
+      SupabaseService.saveBillingLetter(letter, orgId)
+    );
+  }
+
+  private static syncBillingLetterDeleteToSupabase(id: string) {
+    SupabaseService.deleteBillingLetter(id).catch((e) =>
+      console.error('Gagal menghapus surat tagihan di Supabase:', e)
+    );
+  }
+
+  private static syncDocumentToSupabase(doc: DocumentItem) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return;
+    this.trackedSync('documents', doc.id, doc.title, () =>
+      SupabaseService.saveDocument(doc, orgId)
+    );
+  }
+
+  private static syncAuditLogToSupabase(log: AuditLog) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return;
+    // Audit logs are append-only (insert, not upsert) and comparatively
+    // low-stakes to lose one of vs. spamming retries forever, so this one
+    // is intentionally NOT added to the retry-tracked failure list - a
+    // failed audit log sync is logged to console but doesn't block or
+    // nag the user. It can still be recovered via "Migrate to Cloud" in
+    // Settings, which re-pushes every local audit log.
+    SupabaseService.saveAuditLog(log, orgId).catch((e) =>
+      console.error('Gagal sinkron audit log ke Supabase:', e)
+    );
+  }
+
   /**
    * Pulls customers, invoices, payments, and products down from Supabase and
    * overwrites the local cache, so a fresh browser/device sees real data
@@ -1154,49 +1202,271 @@ export class StorageService {
    * UUIDs and cascades the change into any invoice line items that reference
    * the old id via `productId`. Safe to call repeatedly - it's a no-op once
    * every id is already a valid UUID.
+   *
+   * NOTE: kept for backward compatibility (called directly from
+   * SettingsView.tsx). It now just delegates to `repairAllLegacyIds()`,
+   * which does the same repair across every entity, not just Product -
+   * because Billing Letters/Documents have hard foreign keys into
+   * Invoices/Customers, so those need fixing too before they can sync.
    */
   public static repairLegacyProductIds(): void {
+    this.repairAllLegacyIds();
+  }
+
+  /**
+   * Repairs every entity id that predates the `generateId()` fix (e.g.
+   * `cust-1735000000000`, `inv-1735000000000`) and rewrites every place that
+   * references those old ids, across every entity type in the app:
+   *
+   *   Customer  <- Invoice.customerId, Payment.customerId,
+   *                BillingLetter.customerId, Document.customerId
+   *   Product   <- InvoiceItem.productId
+   *   Invoice   <- Payment.invoiceId, BillingLetter.invoiceId,
+   *                Document.referenceId (when documentType !== 'billing_letter')
+   *   Payment   <- (no known incoming references)
+   *   BillingLetter <- Document.referenceId (when documentType === 'billing_letter')
+   *
+   * This matters because `billing_letters.invoice_id` and
+   * `billing_letters.customer_id` are NOT NULL foreign keys in Postgres -
+   * saving a billing letter that points at a non-UUID or nonexistent invoice
+   * id fails outright. Safe to call repeatedly; it's a no-op once every id
+   * is already a valid UUID.
+   */
+  public static repairAllLegacyIds(): void {
+    let totalFixed = 0;
+
+    // --- Customers ---
+    const customers = this.getCustomers();
+    const customerIdMap = new Map<string, string>();
+    const fixedCustomers = customers.map((c) => {
+      if (isValidUUID(c.id)) return c;
+      const newId = generateId();
+      customerIdMap.set(c.id, newId);
+      return { ...c, id: newId };
+    });
+    if (customerIdMap.size > 0) {
+      this.setItem(STORAGE_KEYS.CUSTOMERS, fixedCustomers);
+      totalFixed += customerIdMap.size;
+    }
+
+    // --- Products ---
     const products = this.getProducts();
-    const idMap = new Map<string, string>();
+    const productIdMap = new Map<string, string>();
     const fixedProducts = products.map((p) => {
       if (isValidUUID(p.id)) return p;
       const newId = generateId();
-      idMap.set(p.id, newId);
+      productIdMap.set(p.id, newId);
       return { ...p, id: newId };
     });
+    if (productIdMap.size > 0) {
+      this.setItem(STORAGE_KEYS.PRODUCTS, fixedProducts);
+      totalFixed += productIdMap.size;
+    }
 
-    if (idMap.size === 0) return;
+    // --- Bank Accounts (embedded inside Organization) ---
+    const org = this.getOrganization();
+    const bankAccountIdMap = new Map<string, string>();
+    const fixedBankAccounts = (org.bankAccounts || []).map((b) => {
+      if (isValidUUID(b.id)) return b;
+      const newId = generateId();
+      bankAccountIdMap.set(b.id, newId);
+      return { ...b, id: newId };
+    });
+    if (bankAccountIdMap.size > 0) {
+      this.setItem(STORAGE_KEYS.ORGANIZATION, { ...org, bankAccounts: fixedBankAccounts });
+      totalFixed += bankAccountIdMap.size;
+    }
 
-    this.setItem(STORAGE_KEYS.PRODUCTS, fixedProducts);
-
+    // --- Invoices (ids + cascaded customerId/productId/bankAccountId references) ---
     const invoices = this.getItem<Invoice[]>(STORAGE_KEYS.INVOICES, initialInvoices);
+    const invoiceIdMap = new Map<string, string>();
     let invoicesChanged = false;
     const fixedInvoices = invoices.map((inv) => {
-      if (!inv.items || inv.items.length === 0) return inv;
-      let itemsChanged = false;
-      const items = inv.items.map((item) => {
-        if (item.productId && idMap.has(item.productId)) {
-          itemsChanged = true;
-          return { ...item, productId: idMap.get(item.productId) };
-        }
-        return item;
-      });
-      if (itemsChanged) {
-        invoicesChanged = true;
-        return { ...inv, items };
+      let changed = false;
+      let id = inv.id;
+      if (!isValidUUID(id)) {
+        id = generateId();
+        invoiceIdMap.set(inv.id, id);
+        changed = true;
       }
-      return inv;
+      let customerId = inv.customerId;
+      if (customerIdMap.has(customerId)) {
+        customerId = customerIdMap.get(customerId)!;
+        changed = true;
+      }
+      let bankAccountId = inv.bankAccountId;
+      if (bankAccountId && bankAccountIdMap.has(bankAccountId)) {
+        bankAccountId = bankAccountIdMap.get(bankAccountId);
+        changed = true;
+      }
+      let items = inv.items;
+      if (items && items.length > 0) {
+        let itemsChanged = false;
+        items = items.map((item) => {
+          if (item.productId && productIdMap.has(item.productId)) {
+            itemsChanged = true;
+            return { ...item, productId: productIdMap.get(item.productId) };
+          }
+          return item;
+        });
+        if (itemsChanged) changed = true;
+      }
+      if (!changed) return inv;
+      invoicesChanged = true;
+      return { ...inv, id, customerId, bankAccountId, items };
     });
     if (invoicesChanged) {
       localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(fixedInvoices));
+      totalFixed += invoiceIdMap.size;
     }
 
-    console.info(`Memperbaiki ${idMap.size} ID produk lama agar kompatibel dengan Supabase.`);
+    // --- Payments (ids + cascaded invoiceId/customerId/bankAccountId references) ---
+    const payments = this.getItem<Payment[]>(STORAGE_KEYS.PAYMENTS, initialPayments);
+    const paymentIdMap = new Map<string, string>();
+    let paymentsChanged = false;
+    const fixedPayments = payments.map((pay) => {
+      let changed = false;
+      let id = pay.id;
+      if (!isValidUUID(id)) {
+        id = generateId();
+        paymentIdMap.set(pay.id, id);
+        changed = true;
+      }
+      let invoiceId = pay.invoiceId;
+      if (invoiceIdMap.has(invoiceId)) {
+        invoiceId = invoiceIdMap.get(invoiceId)!;
+        changed = true;
+      }
+      let customerId = pay.customerId;
+      if (customerIdMap.has(customerId)) {
+        customerId = customerIdMap.get(customerId)!;
+        changed = true;
+      }
+      let bankAccountId = pay.bankAccountId;
+      if (bankAccountId && bankAccountIdMap.has(bankAccountId)) {
+        bankAccountId = bankAccountIdMap.get(bankAccountId);
+        changed = true;
+      }
+      if (!changed) return pay;
+      paymentsChanged = true;
+      return { ...pay, id, invoiceId, customerId, bankAccountId };
+    });
+    if (paymentsChanged) {
+      localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(fixedPayments));
+      totalFixed += paymentIdMap.size;
+    }
+
+    // --- Billing Letters (ids + cascaded invoiceId/customerId references) ---
+    const billingLetters = this.getBillingLetters();
+    const billingLetterIdMap = new Map<string, string>();
+    let lettersChanged = false;
+    const fixedLetters = billingLetters.map((l) => {
+      let changed = false;
+      let id = l.id;
+      if (!isValidUUID(id)) {
+        id = generateId();
+        billingLetterIdMap.set(l.id, id);
+        changed = true;
+      }
+      let invoiceId = l.invoiceId;
+      if (invoiceIdMap.has(invoiceId)) {
+        invoiceId = invoiceIdMap.get(invoiceId)!;
+        changed = true;
+      }
+      let customerId = l.customerId;
+      if (customerIdMap.has(customerId)) {
+        customerId = customerIdMap.get(customerId)!;
+        changed = true;
+      }
+      if (!changed) return l;
+      lettersChanged = true;
+      return { ...l, id, invoiceId, customerId };
+    });
+    if (lettersChanged) {
+      this.setItem(STORAGE_KEYS.BILLING_LETTERS, fixedLetters);
+      totalFixed += billingLetterIdMap.size;
+    }
+
+    // --- Documents (ids + cascaded customerId/referenceId references) ---
+    const documents = this.getDocuments();
+    let docsChanged = false;
+    const fixedDocuments = documents.map((d) => {
+      let changed = false;
+      let id = d.id;
+      if (!isValidUUID(id)) {
+        id = generateId();
+        changed = true;
+      }
+      let customerId = d.customerId;
+      if (customerId && customerIdMap.has(customerId)) {
+        customerId = customerIdMap.get(customerId);
+        changed = true;
+      }
+      let referenceId = d.referenceId;
+      if (referenceId) {
+        if (d.documentType === 'billing_letter' && billingLetterIdMap.has(referenceId)) {
+          referenceId = billingLetterIdMap.get(referenceId);
+          changed = true;
+        } else if (invoiceIdMap.has(referenceId)) {
+          referenceId = invoiceIdMap.get(referenceId);
+          changed = true;
+        } else if (!isValidUUID(referenceId)) {
+          // Points at something we have no mapping for (already-deleted
+          // record, etc). Null it out rather than sending an invalid UUID
+          // to a UUID column.
+          referenceId = undefined;
+          changed = true;
+        }
+      }
+      if (!changed) return d;
+      docsChanged = true;
+      return { ...d, id, customerId, referenceId };
+    });
+    if (docsChanged) {
+      this.setItem(STORAGE_KEYS.DOCUMENTS, fixedDocuments);
+    }
+
+    // --- Bank Transactions (ids + cascaded bankAccountId/matchedPaymentId/matchedInvoiceId) ---
+    const bankTxs = this.getBankTransactions();
+    let bankTxsChanged = false;
+    const fixedBankTxs = bankTxs.map((t) => {
+      let changed = false;
+      let id = t.id;
+      if (!isValidUUID(id)) {
+        id = generateId();
+        changed = true;
+      }
+      let bankAccountId = t.bankAccountId;
+      if (bankAccountId && bankAccountIdMap.has(bankAccountId)) {
+        bankAccountId = bankAccountIdMap.get(bankAccountId)!;
+        changed = true;
+      }
+      let matchedPaymentId = t.matchedPaymentId;
+      if (matchedPaymentId && paymentIdMap.has(matchedPaymentId)) {
+        matchedPaymentId = paymentIdMap.get(matchedPaymentId);
+        changed = true;
+      }
+      let matchedInvoiceId = t.matchedInvoiceId;
+      if (matchedInvoiceId && invoiceIdMap.has(matchedInvoiceId)) {
+        matchedInvoiceId = invoiceIdMap.get(matchedInvoiceId);
+        changed = true;
+      }
+      if (!changed) return t;
+      bankTxsChanged = true;
+      return { ...t, id, bankAccountId, matchedPaymentId, matchedInvoiceId };
+    });
+    if (bankTxsChanged) {
+      this.setItem(STORAGE_KEYS.BANK_TRANSACTIONS, fixedBankTxs);
+    }
+
+    if (totalFixed > 0) {
+      console.info(`Memperbaiki ${totalFixed} ID lama (dan referensinya) agar kompatibel dengan Supabase.`);
+    }
   }
 
   public static async hydrateFromSupabase(organizationId?: string | null): Promise<boolean> {
     try {
-      this.repairLegacyProductIds();
+      this.repairAllLegacyIds();
       const status = await SupabaseService.checkConnection();
       if (!status.connected || !status.authenticated) {
         return false;
@@ -1205,22 +1475,42 @@ export class StorageService {
       const orgId = organizationId || this.getSyncOrgId();
       if (!orgId) return false;
 
-      const [customers, invoices, payments, products] = await Promise.all([
+      const [customers, invoices, payments, products, billingLetters, documents, auditLogs, organization] = await Promise.all([
         SupabaseService.fetchCustomers(orgId),
         SupabaseService.fetchInvoices(orgId),
         SupabaseService.fetchPayments(orgId),
         SupabaseService.fetchProducts(orgId),
+        SupabaseService.fetchBillingLetters(orgId),
+        SupabaseService.fetchDocuments(orgId),
+        SupabaseService.fetchAuditLogs(orgId),
+        SupabaseService.getOrganization(orgId),
       ]);
 
       localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
       localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
       localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
-      // Products: only overwrite the local cache if Supabase actually
-      // returned something (or we know the org genuinely has none yet).
-      // An empty array here could also mean fetchProducts swallowed an
-      // error internally, so we only trust it once connection+auth are
-      // confirmed above.
+      // Products, billing letters, documents, audit logs: only overwrite the
+      // local cache if Supabase actually returned something (or we know the
+      // org genuinely has none yet). An empty array here could also mean the
+      // fetch swallowed an error internally, so we only trust it once
+      // connection+auth are confirmed above.
       localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+      localStorage.setItem(STORAGE_KEYS.BILLING_LETTERS, JSON.stringify(billingLetters));
+      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(documents));
+      // Audit logs are append-only and capped locally at 200 entries for UI
+      // performance; Supabase is the real source of truth for full history.
+      localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(auditLogs));
+      // Organization: only overwrite if Supabase actually has a row for
+      // this org (a brand-new org right after signup may not be pushed
+      // yet - don't clobber local settings with null in that case).
+      if (organization) {
+        localStorage.setItem(STORAGE_KEYS.ORGANIZATION, JSON.stringify(organization));
+      }
+      // NOTE: Bank Reconciliation (bank_transactions) is intentionally NOT
+      // synced yet - deprioritized for now. See supabase/migration_v3_bank_transactions.sql
+      // (schema + SupabaseService methods exist and are ready) for when this
+      // resumes; storage.ts's own bank-transaction CRUD is untouched and
+      // still 100% localStorage in the meantime.
       this.recalculateCustomerBalances();
       this.notify();
       return true;
@@ -1238,6 +1528,7 @@ export class StorageService {
   public static saveOrganization(org: Organization): Organization {
     this.setItem(STORAGE_KEYS.ORGANIZATION, org);
     this.addAuditLog('update', 'settings', org.id, org.name, 'Memperbarui profil dan konfigurasi organisasi');
+    this.syncOrganizationToSupabase(org);
     return org;
   }
 
@@ -1246,7 +1537,18 @@ export class StorageService {
     const updated = { ...current, ...org };
     this.setItem(STORAGE_KEYS.ORGANIZATION, updated);
     this.addAuditLog('update', 'settings', updated.id, updated.name, 'Memperbarui profil dan konfigurasi organisasi');
+    this.syncOrganizationToSupabase(updated);
     return updated;
+  }
+
+  private static syncOrganizationToSupabase(org: Organization) {
+    // Organization doesn't use getSyncOrgId() (which reads the CURRENT
+    // user's org) because org.id itself IS the org id here - and because
+    // this can run before a full login (e.g. right after signup), we sync
+    // whenever org.id looks like a real UUID rather than the local-only
+    // 'org-001' placeholder used before any cloud org exists.
+    if (!isValidUUID(org.id)) return;
+    this.trackedSync('organizations', org.id, org.name, () => SupabaseService.saveOrganization(org));
   }
 
   // User Profile
@@ -1284,7 +1586,7 @@ export class StorageService {
     return this.getCustomers().find((c) => c.id === id);
   }
 
-  public static saveCustomer(customerData: Omit<Customer, 'id' | 'totalInvoiced' | 'totalPaid' | 'totalOutstanding' | 'createdAt'> & { id?: string }): Customer {
+  public static async saveCustomer(customerData: Omit<Customer, 'id' | 'totalInvoiced' | 'totalPaid' | 'totalOutstanding' | 'createdAt'> & { id?: string }): Promise<Customer> {
     const customers = this.getCustomers();
     const sequences = this.getSequences();
     let customer: Customer;
@@ -1302,7 +1604,11 @@ export class StorageService {
         throw new Error('Customer not found');
       }
     } else {
-      const newSeq = sequences.customer + 1;
+      // Atomic sequence reservation - see saveInvoice() for the full
+      // rationale. Falls back to the local counter when Supabase isn't
+      // configured/reachable, so the app still works offline.
+      const atomicSeq = await SupabaseService.getNextSequence('customer', sequences.customer);
+      const newSeq = atomicSeq !== null ? atomicSeq : sequences.customer + 1;
       this.updateSequences({ customer: newSeq });
       customer = {
         ...customerData,
@@ -1339,7 +1645,7 @@ export class StorageService {
     return this.getItem<Product[]>(STORAGE_KEYS.PRODUCTS, initialProducts);
   }
 
-  public static saveProduct(productData: Omit<Product, 'id'> & { id?: string }): Product {
+  public static async saveProduct(productData: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
     const products = this.getProducts();
     const sequences = this.getSequences();
     let product: Product;
@@ -1354,10 +1660,18 @@ export class StorageService {
         throw new Error('Product not found');
       }
     } else {
-      const newSeq = sequences.product + 1;
+      // Atomic sequence reservation - see saveInvoice() for the full
+      // rationale. NOTE: previously this counter was incremented but never
+      // actually used to build product.code (the caller generated its own
+      // Date.now()-based fallback, which was itself collision-prone across
+      // devices) - now the code is always derived from the reserved
+      // sequence number unless the user typed a custom code explicitly.
+      const atomicSeq = await SupabaseService.getNextSequence('product', sequences.product);
+      const newSeq = atomicSeq !== null ? atomicSeq : sequences.product + 1;
       this.updateSequences({ product: newSeq });
       product = {
         ...productData,
+        code: productData.code && productData.code.trim() ? productData.code.trim() : `PRD-${String(newSeq).padStart(4, '0')}`,
         id: generateId(),
       };
       products.unshift(product);
@@ -1423,7 +1737,7 @@ export class StorageService {
     return this.getInvoices().find((inv) => inv.id === id);
   }
 
-  public static saveInvoice(invoiceData: Partial<Invoice> & { customerId: string; items: InvoiceItem[] }): Invoice {
+  public static async saveInvoice(invoiceData: Partial<Invoice> & { customerId: string; items: InvoiceItem[] }): Promise<Invoice> {
     const invoices = this.getInvoices();
     const org = this.getOrganization();
     const customer = this.getCustomerById(invoiceData.customerId);
@@ -1482,7 +1796,15 @@ export class StorageService {
       invoices[index] = invoice;
       this.addAuditLog('update', 'invoices', invoice.id, invoice.invoiceNumber, `Memperbarui invoice: ${invoice.invoiceNumber}`);
     } else {
-      const newSeq = sequences.invoice + 1;
+      // Atomic sequence reservation: ask Supabase for the next invoice
+      // number via a server-side function that increments under a row
+      // lock (see migration_v4_atomic_sequences.sql), so two devices
+      // creating an invoice at the same moment can never receive the same
+      // number. Falls back to the old local-counter behavior if Supabase
+      // isn't configured/reachable/migrated yet - so the app still works
+      // offline, just without the cross-device collision guarantee.
+      const atomicSeq = await SupabaseService.getNextSequence('invoice', sequences.invoice);
+      const newSeq = atomicSeq !== null ? atomicSeq : sequences.invoice + 1;
       this.updateSequences({ invoice: newSeq });
       const invoiceNumber = formatDocNumber(org.invoiceFormat, newSeq);
 
@@ -1595,7 +1917,7 @@ export class StorageService {
     return this.getItem<Payment[]>(STORAGE_KEYS.PAYMENTS, initialPayments);
   }
 
-  public static recordPayment(paymentData: {
+  public static async recordPayment(paymentData: {
     invoiceId: string;
     amount: number;
     paymentDate: string;
@@ -1605,7 +1927,7 @@ export class StorageService {
     accountNumber?: string;
     referenceNumber?: string;
     notes?: string;
-  }): Payment {
+  }): Promise<Payment> {
     const invoice = this.getInvoiceById(paymentData.invoiceId);
     if (!invoice) throw new Error('Invoice tidak ditemukan');
 
@@ -1618,8 +1940,14 @@ export class StorageService {
     const user = this.getUser();
     const sequences = this.getSequences();
 
-    const newPaySeq = sequences.payment + 1;
-    const newReceiptSeq = sequences.receipt + 1;
+    // Atomic sequence reservation for both the payment number and the
+    // receipt/kuitansi number - see saveInvoice() for the full rationale.
+    // Each call takes its own row lock under a distinct sequence_name
+    // ('payment' / 'receipt'), so this is safe to await sequentially.
+    const atomicPaySeq = await SupabaseService.getNextSequence('payment', sequences.payment);
+    const newPaySeq = atomicPaySeq !== null ? atomicPaySeq : sequences.payment + 1;
+    const atomicReceiptSeq = await SupabaseService.getNextSequence('receipt', sequences.receipt);
+    const newReceiptSeq = atomicReceiptSeq !== null ? atomicReceiptSeq : sequences.receipt + 1;
     this.updateSequences({ payment: newPaySeq, receipt: newReceiptSeq });
 
     const paymentNumber = `PAY/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${String(newPaySeq).padStart(5, '0')}`;
@@ -1732,7 +2060,7 @@ export class StorageService {
     return this.getItem<BillingLetter[]>(STORAGE_KEYS.BILLING_LETTERS, initialBillingLetters);
   }
 
-  public static saveBillingLetter(data: {
+  public static async saveBillingLetter(data: {
     id?: string;
     invoiceId: string;
     letterType: BillingLetter['letterType'];
@@ -1743,7 +2071,7 @@ export class StorageService {
     subject: string;
     bodyText: string;
     status?: BillingLetter['status'];
-  }): BillingLetter {
+  }): Promise<BillingLetter> {
     const letters = this.getBillingLetters();
     const invoice = this.getInvoiceById(data.invoiceId);
     if (!invoice) throw new Error('Invoice tidak ditemukan');
@@ -1763,10 +2091,14 @@ export class StorageService {
       letters[index] = updated;
       this.setItem(STORAGE_KEYS.BILLING_LETTERS, letters);
       this.addAuditLog('update', 'billing_letters', updated.id, updated.letterNumber, `Memperbarui surat tagihan ${updated.letterNumber}`);
+      this.syncBillingLetterToSupabase(updated);
       return updated;
     }
 
-    const newLetterSeq = sequences.billingLetter + 1;
+    // Atomic sequence reservation for the surat tagihan number - see
+    // saveInvoice() for the full rationale.
+    const atomicSeq = await SupabaseService.getNextSequence('billingLetter', sequences.billingLetter);
+    const newLetterSeq = atomicSeq !== null ? atomicSeq : sequences.billingLetter + 1;
     this.updateSequences({ billingLetter: newLetterSeq });
     const letterNumber = formatDocNumber(org.billingLetterFormat, newLetterSeq);
     const overdueDays = getDaysOverdue(invoice.dueDate);
@@ -1802,6 +2134,7 @@ export class StorageService {
 
     letters.unshift(letter);
     this.setItem(STORAGE_KEYS.BILLING_LETTERS, letters);
+    this.syncBillingLetterToSupabase(letter);
 
     this.addDocument({
       title: `Surat Tagihan - ${invoice.customerName} (${letterNumber})`,
@@ -1827,6 +2160,7 @@ export class StorageService {
     const filtered = letters.filter((l) => l.id !== id);
     this.setItem(STORAGE_KEYS.BILLING_LETTERS, filtered);
     this.addAuditLog('delete', 'billing_letters', id, target.letterNumber, `Menghapus surat tagihan: ${target.letterNumber}`);
+    this.syncBillingLetterDeleteToSupabase(id);
     return true;
   }
 
@@ -1881,6 +2215,7 @@ export class StorageService {
     const letters = this.getBillingLetters();
     letters.unshift(letter);
     this.setItem(STORAGE_KEYS.BILLING_LETTERS, letters);
+    this.syncBillingLetterToSupabase(letter);
 
     // Create Document
     this.addDocument({
@@ -1921,6 +2256,7 @@ export class StorageService {
     };
     docs.unshift(newDoc);
     this.setItem(STORAGE_KEYS.DOCUMENTS, docs);
+    this.syncDocumentToSupabase(newDoc);
     return newDoc;
   }
 
@@ -1951,7 +2287,8 @@ export class StorageService {
       timestamp: new Date().toISOString(),
     };
     logs.unshift(newLog);
-    this.setItem(STORAGE_KEYS.AUDIT_LOGS, logs.slice(0, 200)); // Cap at 200 items
+    this.setItem(STORAGE_KEYS.AUDIT_LOGS, logs.slice(0, 200)); // Cap local cache at 200 items (UI perf only - Supabase keeps full history)
+    this.syncAuditLogToSupabase(newLog);
   }
 
   // Notifications
@@ -2142,13 +2479,24 @@ export class StorageService {
 
   public static saveBankTransactions(txs: BankTransaction[]): void {
     this.setItem(STORAGE_KEYS.BANK_TRANSACTIONS, txs);
+    // NOTE: Cloud sync intentionally not implemented yet - Bank
+    // Reconciliation is deprioritized for now. It also needs a schema
+    // decision first: src/types/database.ts already defines a
+    // `bank_transactions` table shape (date, type:'credit'|'debit',
+    // is_reconciled, reconciled_with_type/id/number) that's DIFFERENT from
+    // the richer local `BankTransaction` interface actually used by the UI
+    // (transactionDate, status:'unmatched'|'matched'|'reconciled'|'ignored',
+    // matchedPaymentId, matchedInvoiceId, bankAccountId, matchReason,
+    // notes...). Neither has been created via a migration yet. Whichever
+    // shape is picked, the SQL migration + SupabaseService methods need to
+    // match it exactly before wiring this back up.
   }
 
   public static addBankTransaction(tx: Omit<BankTransaction, 'id'>): BankTransaction {
     const txs = this.getBankTransactions();
     const newTx: BankTransaction = {
       ...tx,
-      id: `bt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: generateId(),
     };
     txs.unshift(newTx);
     this.saveBankTransactions(txs);
@@ -2170,6 +2518,10 @@ export class StorageService {
     const filtered = txs.filter((t) => t.id !== id);
     if (filtered.length === txs.length) return false;
     this.saveBankTransactions(filtered);
+    // Cloud delete intentionally not wired yet either - see note above.
+    // SupabaseService.deleteBankTransaction(id).catch((e) =>
+    //   console.error('Gagal menghapus transaksi bank di Supabase:', e)
+    // );
     return true;
   }
 
@@ -2339,12 +2691,12 @@ export class StorageService {
    * Reconciles a bank transaction with an invoice (or existing payment)
    * Automatically generates payment receipt, updates invoice balance, logs audit, and marks transaction as reconciled.
    */
-  public static reconcileTransaction(
+  public static async reconcileTransaction(
     txId: string,
     invoiceId?: string,
     paymentId?: string,
     customAmount?: number
-  ): { success: boolean; payment?: Payment; message: string } {
+  ): Promise<{ success: boolean; payment?: Payment; message: string }> {
     const txs = this.getBankTransactions();
     const txIndex = txs.findIndex((t) => t.id === txId);
     if (txIndex === -1) throw new Error('Transaksi bank tidak ditemukan');
@@ -2400,7 +2752,7 @@ export class StorageService {
     }
 
     // Record the payment
-    const newPayment = this.recordPayment({
+    const newPayment = await this.recordPayment({
       invoiceId: invoice.id,
       amount: payAmount,
       paymentDate: tx.transactionDate || new Date().toISOString().split('T')[0],
@@ -2452,11 +2804,11 @@ export class StorageService {
   /**
    * One-click Batch Auto-Reconcile for all transactions with high confidence (>= minConfidence)
    */
-  public static autoReconcileAllMatched(minConfidence = 85): {
+  public static async autoReconcileAllMatched(minConfidence = 85): Promise<{
     reconciledCount: number;
     totalAmountReconciled: number;
     newPayments: Payment[];
-  } {
+  }> {
     // First refresh matches
     this.autoMatchTransactions();
     const txs = this.getBankTransactions();
@@ -2470,7 +2822,7 @@ export class StorageService {
 
     for (const tx of candidates) {
       try {
-        const res = this.reconcileTransaction(tx.id, tx.matchedInvoiceId);
+        const res = await this.reconcileTransaction(tx.id, tx.matchedInvoiceId);
         if (res.success && res.payment) {
           reconciledCount++;
           totalAmountReconciled += tx.amount;

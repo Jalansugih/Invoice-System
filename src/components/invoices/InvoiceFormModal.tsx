@@ -217,13 +217,13 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
     setIsSubmitting(true);
     try {
-      const saved = StorageService.saveInvoice({
+      const saved = await StorageService.saveInvoice({
         ...(invoiceToEdit ? { id: invoiceToEdit.id } : {}),
         customerId,
         issueDate,

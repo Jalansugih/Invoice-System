@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StorageService } from '../../lib/storage';
+import { StorageService, generateId } from '../../lib/storage';
 import { Organization, BankAccount } from '../../types';
 import { SUPABASE_SQL_MIGRATION } from '../../lib/supabaseMigration';
 import { SupabaseService, MigrationResult } from '../../lib/supabaseService';
@@ -218,7 +218,7 @@ export const SettingsView: React.FC = () => {
 
   const handleAddBank = () => {
     const newBank: BankAccount = {
-      id: `bank-${Date.now()}`,
+      id: generateId(),
       bankName: 'Bank Mandiri',
       accountNumber: '',
       accountHolder: org.name,

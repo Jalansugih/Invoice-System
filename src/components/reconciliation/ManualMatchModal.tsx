@@ -80,7 +80,7 @@ export const ManualMatchModal: React.FC<ManualMatchModalProps> = ({
     );
   }, [payments, searchQuery]);
 
-  const handleConfirmReconcile = () => {
+  const handleConfirmReconcile = async () => {
     if (!transaction) return;
     setLoading(true);
 
@@ -92,7 +92,7 @@ export const ManualMatchModal: React.FC<ManualMatchModalProps> = ({
           return;
         }
 
-        const res = StorageService.reconcileTransaction(
+        const res = await StorageService.reconcileTransaction(
           transaction.id,
           selectedInvoiceId,
           undefined,
@@ -108,7 +108,7 @@ export const ManualMatchModal: React.FC<ManualMatchModalProps> = ({
           return;
         }
 
-        const res = StorageService.reconcileTransaction(
+        const res = await StorageService.reconcileTransaction(
           transaction.id,
           undefined,
           selectedPaymentId

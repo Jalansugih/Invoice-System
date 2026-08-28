@@ -138,7 +138,7 @@ Apabila sampai dengan batas waktu yang ditentukan di atas kewajiban tersebut bel
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invoiceId) {
       alert('Pilih invoice target penagihan');
@@ -151,7 +151,7 @@ Apabila sampai dengan batas waktu yang ditentukan di atas kewajiban tersebut bel
 
     setIsSubmitting(true);
     try {
-      const saved = StorageService.saveBillingLetter({
+      const saved = await StorageService.saveBillingLetter({
         ...(letterToEdit ? { id: letterToEdit.id } : {}),
         invoiceId,
         letterType,

@@ -158,6 +158,10 @@ export interface Database {
         Args: Record<PropertyKey, never>;
         Returns: string;
       };
+      get_next_sequence: {
+        Args: { p_sequence_name: string; p_minimum_value?: number };
+        Returns: number;
+      };
     };
     Enums: {
       user_role: DbUserRole;

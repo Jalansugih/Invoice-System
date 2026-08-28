@@ -35,6 +35,37 @@ export interface MigrationResult {
 
 export class SupabaseService {
   /**
+   * Atomically reserves the next number in a per-organization sequence
+   * (invoice, payment, receipt, billingLetter, customer, product, ...) via
+   * the `get_next_sequence` Postgres function (see
+   * supabase/migration_v4_atomic_sequences.sql). This is safe against two
+   * devices/tabs generating the same document number at the same time,
+   * unlike the plain `localStorage` counter this replaces.
+   *
+   * `localMinimum` should be the caller's current local sequence value, so
+   * the very first call for a brand-new cloud counter doesn't restart from
+   * 1 and collide with numbers already used locally/historically.
+   *
+   * Returns null (instead of throwing) when Supabase isn't configured/
+   * reachable or the RPC doesn't exist yet (e.g. migration_v4 hasn't been
+   * run) - callers should fall back to the local-only counter in that case.
+   */
+  public static async getNextSequence(sequenceName: string, localMinimum: number): Promise<number | null> {
+    if (!isSupabaseConfigured) return null;
+    try {
+      const { data, error } = await supabase.rpc('get_next_sequence', {
+        p_sequence_name: sequenceName,
+        p_minimum_value: localMinimum,
+      });
+      if (error) throw error;
+      return typeof data === 'number' ? data : null;
+    } catch (e) {
+      console.error(`Supabase getNextSequence(${sequenceName}) error:`, e);
+      return null;
+    }
+  }
+
+  /**
    * Health check for Supabase database connection and authentication
    */
   public static async checkConnection(): Promise<{
@@ -672,6 +703,17 @@ export class SupabaseService {
       return !error;
     } catch (e) {
       console.error('Supabase saveBillingLetter error:', e);
+      return false;
+    }
+  }
+
+  public static async deleteBillingLetter(letterId: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { error } = await supabase.from('billing_letters').delete().eq('id', letterId);
+      return !error;
+    } catch (e) {
+      console.error('Supabase deleteBillingLetter error:', e);
       return false;
     }
   }

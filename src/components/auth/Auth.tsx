@@ -26,6 +26,7 @@ interface AuthContextType {
   isPasswordRecovery: boolean;
   checkBackendHealth: () => Promise<BackendHealthStatus>;
   signInWithPassword: (credentials: { email: string; password: string }) => Promise<{ error: Error | null; data: any }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
   signUpWithPassword: (credentials: {
     email: string;
     password: string;
@@ -456,6 +457,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Supabase signInWithOAuth (Google)
+  // Redirects the browser to Google's consent screen, then back to
+  // `redirectTo`. The actual session pickup happens in the
+  // onAuthStateChange listener above (event will be 'SIGNED_IN'), which
+  // calls ensureProfile() to create the organizations/profiles rows on
+  // first login - same flow as email/password signup, so a Google login
+  // automatically gets its own tenant organization the first time.
+  const signInWithGoogle = async () => {
+    if (!isSupabaseConfigured) {
+      return { error: new Error('Login Google membutuhkan konfigurasi Supabase (VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY) yang aktif. Gunakan akun demo di bawah untuk mencoba aplikasi tanpa Supabase.') };
+    }
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+      if (error) {
+        return { error: new Error(translateAuthError(error)) };
+      }
+      // Browser is navigating away to Google now; nothing else to do here.
+      return { error: null };
+    } catch (err: any) {
+      return { error: new Error(translateAuthError(err)) };
+    }
+  };
+
   // Supabase signUpWithPassword
   const signUpWithPassword = async ({
     email,
@@ -701,6 +734,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isPasswordRecovery,
         checkBackendHealth,
         signInWithPassword,
+        signInWithGoogle,
         signUpWithPassword,
         resetPasswordForEmail,
         updateUserPassword,

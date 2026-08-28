@@ -95,13 +95,13 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
     setIsSubmitting(true);
     try {
-      const saved = StorageService.saveCustomer({
+      const saved = await StorageService.saveCustomer({
         ...(customerToEdit ? { id: customerToEdit.id } : {}),
         ...formData,
       });

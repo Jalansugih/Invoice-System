@@ -69,16 +69,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
     setIsSubmitting(true);
     try {
-      const saved = StorageService.saveProduct({
+      const saved = await StorageService.saveProduct({
         ...(productToEdit ? { id: productToEdit.id } : {}),
         ...formData,
-        code: formData.code || `PRD-${Date.now().toString().slice(-4)}`,
       });
       onSuccess(saved);
       onClose();

@@ -16,6 +16,7 @@ import {
   HelpCircle,
   BookOpen,
   RefreshCw,
+  CloudOff,
 } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
 
@@ -44,7 +45,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const { user: authUser, signOut, signInDemoUser, refreshSession } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRetryingSync, setIsRetryingSync] = useState(false);
+  const [syncFailureCount, setSyncFailureCount] = useState(() => StorageService.getSyncFailures().length);
   const user = authUser || StorageService.getUser();
+
+  React.useEffect(() => {
+    return StorageService.subscribeSyncStatus(() => {
+      setSyncFailureCount(StorageService.getSyncFailures().length);
+    });
+  }, []);
+
+  const handleRetrySync = async () => {
+    setIsRetryingSync(true);
+    try {
+      await StorageService.retryFailedSyncs();
+    } finally {
+      setIsRetryingSync(false);
+    }
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -131,6 +149,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">New Invoice</span>
           </button>
         </div>
+
+        {/* Cloud Sync Failure Indicator */}
+        {syncFailureCount > 0 && (
+          <button
+            type="button"
+            onClick={handleRetrySync}
+            disabled={isRetryingSync}
+            title={`${syncFailureCount} data belum berhasil tersimpan ke cloud (Supabase). Klik untuk coba lagi.`}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-xs font-semibold text-amber-700 transition-colors disabled:opacity-60 cursor-pointer"
+          >
+            {isRetryingSync ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <CloudOff className="w-3.5 h-3.5" />
+            )}
+            {syncFailureCount} belum sinkron
+          </button>
+        )}
 
         {/* Notification Bell */}
         <NotificationDropdown
