@@ -162,6 +162,34 @@ export interface Database {
         Args: { p_sequence_name: string; p_minimum_value?: number };
         Returns: number;
       };
+      record_payment_atomic: {
+        Args: {
+          p_invoice_id: string;
+          p_amount: number;
+          p_payment_date: string;
+          p_payment_method: string;
+          p_destination_bank?: string | null;
+          p_bank_account_id?: string | null;
+          p_account_number?: string | null;
+          p_reference_number?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: {
+          payment_id: string;
+          payment_number: string;
+          receipt_number: string;
+          document_id: string;
+          invoice_id: string;
+          invoice_number: string;
+          customer_id: string;
+          paid_amount: number;
+          outstanding_amount: number;
+          status: string;
+          paid_at: string | null;
+          destination_bank: string;
+          received_by: string;
+        };
+      };
     };
     Enums: {
       user_role: DbUserRole;

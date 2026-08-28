@@ -1938,6 +1938,123 @@ export class StorageService {
 
     const org = this.getOrganization();
     const user = this.getUser();
+
+    // -----------------------------------------------------------------
+    // PRIMARY PATH: single atomic Postgres transaction (payment insert +
+    // invoice update + document insert + audit log insert all-or-nothing;
+    // see supabase/migration_v5_atomic_payment.sql). If this throws, it's
+    // a real business-rule rejection from the server (e.g. amount now
+    // exceeds outstanding after a concurrent payment) and should surface
+    // to the user as-is, not be swallowed into a local fallback.
+    // recordPaymentAtomic() itself returns null (rather than throwing)
+    // when Supabase isn't configured, there's no live auth session (demo
+    // mode), or the RPC isn't deployed yet - all cases where we should
+    // fall back below instead.
+    // -----------------------------------------------------------------
+    const atomicResult = await SupabaseService.recordPaymentAtomic({
+      invoiceId: invoice.id,
+      amount: paymentData.amount,
+      paymentDate: paymentData.paymentDate,
+      paymentMethod: paymentData.paymentMethod,
+      destinationBank: paymentData.destinationBank,
+      bankAccountId: paymentData.bankAccountId,
+      accountNumber: paymentData.accountNumber,
+      referenceNumber: paymentData.referenceNumber,
+      notes: paymentData.notes,
+    });
+
+    if (atomicResult) {
+      const payment: Payment = {
+        id: atomicResult.payment_id,
+        paymentNumber: atomicResult.payment_number,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        customerId: invoice.customerId,
+        customerName: invoice.customerName,
+        paymentDate: paymentData.paymentDate,
+        amount: paymentData.amount,
+        paymentMethod: paymentData.paymentMethod,
+        destinationBank: atomicResult.destination_bank,
+        bankAccountId: paymentData.bankAccountId,
+        accountNumber: paymentData.accountNumber,
+        referenceNumber: paymentData.referenceNumber,
+        notes: paymentData.notes,
+        receivedBy: atomicResult.received_by,
+        recordedBy: atomicResult.received_by,
+        receiptNumber: atomicResult.receipt_number,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Everything below only updates the LOCAL CACHE to match what the
+      // server already committed - it does not re-push to Supabase
+      // (that would be redundant, the RPC already wrote it).
+      const payments = this.getPayments();
+      payments.unshift(payment);
+      this.setItem(STORAGE_KEYS.PAYMENTS, payments);
+
+      const invoices = this.getInvoices();
+      const invIndex = invoices.findIndex((i) => i.id === invoice.id);
+      if (invIndex !== -1) {
+        invoices[invIndex] = {
+          ...invoices[invIndex],
+          paidAmount: atomicResult.paid_amount,
+          outstandingAmount: atomicResult.outstanding_amount,
+          status: atomicResult.status as Invoice['status'],
+          paidAt: atomicResult.paid_at || undefined,
+        };
+        this.setItem(STORAGE_KEYS.INVOICES, invoices);
+      }
+
+      const documents = this.getDocuments();
+      documents.unshift({
+        id: atomicResult.document_id,
+        title: `Kuitansi Penerimaan Pembayaran - ${invoice.customerName}`,
+        documentType: 'payment_receipt',
+        documentNumber: atomicResult.receipt_number,
+        customerId: invoice.customerId,
+        customerName: invoice.customerName,
+        referenceId: payment.id,
+        amount: payment.amount,
+        date: payment.paymentDate,
+        status: atomicResult.status === 'paid' ? 'Lunas' : 'Dibayar Sebagian',
+        createdAt: new Date().toISOString(),
+      });
+      this.setItem(STORAGE_KEYS.DOCUMENTS, documents);
+
+      const auditLogs = this.getAuditLogs();
+      auditLogs.unshift({
+        id: generateId(),
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        action: 'pay',
+        module: 'payments',
+        recordId: payment.id,
+        recordTitle: payment.paymentNumber,
+        details: `Mencatat pembayaran Rp${payment.amount.toLocaleString('id-ID')} untuk ${invoice.invoiceNumber} (${invoice.customerName})`,
+        timestamp: new Date().toISOString(),
+      });
+      this.setItem(STORAGE_KEYS.AUDIT_LOGS, auditLogs);
+
+      this.addNotification({
+        title: 'Pembayaran Diterima',
+        message: `Pembayaran Rp${payment.amount.toLocaleString('id-ID')} untuk ${invoice.invoiceNumber} telah dicatat.`,
+        type: 'success',
+        linkModule: 'payments',
+        linkId: payment.id,
+      });
+
+      this.recalculateCustomerBalances();
+      return payment;
+    }
+
+    // -----------------------------------------------------------------
+    // FALLBACK PATH: Supabase not configured / no session (demo mode) /
+    // atomic RPC not deployed yet. Same behaviour as before this change -
+    // sequential local writes, each individually synced to Supabase in
+    // the background. Not atomic, but there's no server transaction to
+    // be atomic with in these cases anyway.
+    // -----------------------------------------------------------------
     const sequences = this.getSequences();
 
     // Atomic sequence reservation for both the payment number and the

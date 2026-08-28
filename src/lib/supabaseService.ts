@@ -66,6 +66,77 @@ export class SupabaseService {
   }
 
   /**
+   * Records a payment as one atomic database transaction: inserts the
+   * payment row, updates the invoice's paid/outstanding/status, archives
+   * the kuitansi document, and writes the audit log entry - all inside a
+   * single Postgres function (see supabase/migration_v5_atomic_payment.sql).
+   * Returns null if Supabase isn't configured/reachable or the RPC
+   * doesn't exist yet (e.g. migration_v5 not run), so the caller can fall
+   * back to the local-only flow.
+   */
+  public static async recordPaymentAtomic(payload: {
+    invoiceId: string;
+    amount: number;
+    paymentDate: string;
+    paymentMethod: string;
+    destinationBank?: string;
+    bankAccountId?: string;
+    accountNumber?: string;
+    referenceNumber?: string;
+    notes?: string;
+  }): Promise<{
+    payment_id: string;
+    payment_number: string;
+    receipt_number: string;
+    document_id: string;
+    invoice_id: string;
+    invoice_number: string;
+    customer_id: string;
+    paid_amount: number;
+    outstanding_amount: number;
+    status: string;
+    paid_at: string | null;
+    destination_bank: string;
+    received_by: string;
+  } | null> {
+    if (!isSupabaseConfigured) return null;
+    try {
+      // Demo/local-only mode has isSupabaseConfigured=true (env keys are
+      // set) but no real Supabase auth session (signInDemoUser never calls
+      // supabase.auth.*). Without this check, the RPC would run under no
+      // authenticated user and get_auth_org_id() would raise, which we'd
+      // otherwise mistake for a real validation error.
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session) return null;
+
+      const { data, error } = await supabase.rpc('record_payment_atomic', {
+        p_invoice_id: payload.invoiceId,
+        p_amount: payload.amount,
+        p_payment_date: payload.paymentDate,
+        p_payment_method: payload.paymentMethod,
+        p_destination_bank: payload.destinationBank ?? null,
+        p_bank_account_id: payload.bankAccountId ?? null,
+        p_account_number: payload.accountNumber ?? null,
+        p_reference_number: payload.referenceNumber ?? null,
+        p_notes: payload.notes ?? null,
+      });
+      if (error) throw error;
+      return data ?? null;
+    } catch (e: any) {
+      // Surface validation errors (e.g. "Nominal pembayaran melebihi sisa
+      // tagihan...") raised by the SQL function so the caller can show
+      // them to the user, instead of silently swallowing and falling
+      // back to a local write that would duplicate the payment.
+      const msg: string = e?.message || '';
+      if (msg.includes('Nominal pembayaran') || msg.includes('Invoice tidak ditemukan') || msg.includes('organisasi')) {
+        throw new Error(msg);
+      }
+      console.error('Supabase recordPaymentAtomic error:', e);
+      return null;
+    }
+  }
+
+  /**
    * Health check for Supabase database connection and authentication
    */
   public static async checkConnection(): Promise<{
