@@ -7,7 +7,8 @@ import { Input } from '../ui/Input';
 import { Badge } from '../ui/Badge';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { ProductModal } from './ProductModal';
-import { Package, Search, Plus, Download, Edit2, Trash2, Tag } from 'lucide-react';
+import { ProductImportModal } from './ProductImportModal';
+import { Package, Search, Plus, Download, Upload, Edit2, Trash2, Tag } from 'lucide-react';
 
 export const ProductList: React.FC = () => {
   const [products, setProducts] = useState(StorageService.getProducts());
@@ -15,6 +16,7 @@ export const ProductList: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
@@ -90,6 +92,14 @@ export const ProductList: React.FC = () => {
             leftIcon={<Download className="w-4 h-4" />}
           >
             Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsImportModalOpen(true)}
+            leftIcon={<Upload className="w-4 h-4" />}
+          >
+            Import Massal
           </Button>
           <Button
             size="sm"
@@ -227,6 +237,13 @@ export const ProductList: React.FC = () => {
           setProductToEdit(null);
         }}
         productToEdit={productToEdit}
+        onSuccess={() => refreshData()}
+      />
+
+      {/* Mass Import Modal */}
+      <ProductImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => refreshData()}
       />
 

@@ -20,7 +20,16 @@
 -- kegagalan ini tidak terlihat sebagai error keras di UI.
 -- =========================================================================
 
+-- Didefinisikan ulang di sini secara aman (CREATE OR REPLACE = idempotent)
+-- supaya migrasi ini tetap bisa jalan walau urutan file migrasi sebelumnya
+-- berbeda di project Supabase-mu.
+CREATE OR REPLACE FUNCTION public.get_auth_org_id()
+RETURNS UUID AS $$
+    SELECT organization_id FROM public.profiles WHERE id = auth.uid() LIMIT 1;
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
 DROP POLICY IF EXISTS "Organizations multi-tenant policy" ON public.organizations;
+DROP POLICY IF EXISTS "Organizations isolation policy" ON public.organizations;
 
 -- Baca / update / hapus hanya organisasi milik sendiri (perilaku lama tetap sama)
 CREATE POLICY "Organizations: view own org"

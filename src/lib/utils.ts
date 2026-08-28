@@ -177,3 +177,67 @@ export function exportToCSV(filename: string, rows: Record<string, any>[]) {
   link.click();
   document.body.removeChild(link);
 }
+
+/**
+ * Parser CSV minimal (tanpa dependency eksternal) yang tetap sadar tanda kutip
+ * RFC4180: mendukung koma & baris baru di dalam field yang diapit '"', serta
+ * escape tanda kutip ganda (""). Baris pertama dianggap header.
+ * Mengembalikan array of objects {header: value}. Baris kosong diabaikan.
+ */
+export function parseCSV(text: string): Record<string, string>[] {
+  const rows: string[][] = [];
+  let field = '';
+  let row: string[] = [];
+  let inQuotes = false;
+  // Normalisasi line ending & buang BOM di awal file (umum dari Excel)
+  const src = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  for (let i = 0; i < src.length; i++) {
+    const char = src[i];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (src[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      row.push(field);
+      field = '';
+    } else if (char === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += char;
+    }
+  }
+  // Field/baris terakhir (file tanpa newline penutup)
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  const nonEmptyRows = rows.filter((r) => r.some((cell) => cell.trim() !== ''));
+  if (nonEmptyRows.length === 0) return [];
+
+  const headers = nonEmptyRows[0].map((h) => h.trim());
+  return nonEmptyRows.slice(1).map((r) => {
+    const obj: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      obj[h] = (r[idx] ?? '').trim();
+    });
+    return obj;
+  });
+}
