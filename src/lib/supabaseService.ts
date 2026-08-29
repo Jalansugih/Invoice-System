@@ -504,6 +504,9 @@ export class SupabaseService {
         discountType: inv.discount_type || 'fixed',
         discountValue: Number(inv.discount_value) || 0,
         discountAmount: Number(inv.discount_amount) || 0,
+        // taxable_amount (DPP) bukan kolom tersendiri di Supabase - selalu
+        // diturunkan dari subtotal - discountAmount, sama seperti storage.ts.
+        taxableAmount: Math.max(0, (Number(inv.subtotal) || 0) - (Number(inv.discount_amount) || 0)),
         taxRate: Number(inv.tax_rate) || 11,
         taxAmount: Number(inv.tax_amount) || 0,
         additionalCharges: Number(inv.additional_charges) || 0,
