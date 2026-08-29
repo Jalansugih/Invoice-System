@@ -6,12 +6,14 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { CustomerModal } from './CustomerModal';
+import { CustomerImportModal } from './CustomerImportModal';
 import { CustomerDetailDrawer } from './CustomerDetailDrawer';
 import {
   Users,
   Search,
   Plus,
   Download,
+  Upload,
   Eye,
   Edit2,
   Trash2,
@@ -39,6 +41,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
 
   // Modal states
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null);
   const [selectedCustomerForDetail, setSelectedCustomerForDetail] = useState<Customer | null>(null);
 
@@ -125,6 +128,14 @@ export const CustomerList: React.FC<CustomerListProps> = ({
             leftIcon={<Download className="w-4 h-4" />}
           >
             Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsImportModalOpen(true)}
+            leftIcon={<Upload className="w-4 h-4" />}
+          >
+            Import Massal
           </Button>
           <Button
             size="sm"
@@ -369,6 +380,13 @@ export const CustomerList: React.FC<CustomerListProps> = ({
           refreshData();
           setIsFormOpen(false);
         }}
+      />
+
+      {/* Mass Import Modal */}
+      <CustomerImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => refreshData()}
       />
 
       {/* Customer Detail Drawer / Ledger */}

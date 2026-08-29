@@ -192,13 +192,29 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
     setItems(updated);
   };
 
-  // Calculated totals
+  // Calculated totals — pajak dihitung PER ITEM memakai taxRate masing-masing
+  // baris (bukan satu tarif global), supaya invoice yang mencampur item
+  // ber-PPN berbeda (mis. 11% standar vs 0% ekspor/non-PKP) tetap akurat.
+  // Diskon tingkat invoice diprorata ke tiap item sesuai porsi subtotalnya
+  // sebelum tarif pajak baris itu diterapkan.
   const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
   const discountAmount =
     discountType === 'percentage' ? (subtotal * (discountValue || 0)) / 100 : discountValue || 0;
   const taxableAmount = Math.max(0, subtotal - discountAmount);
-  const taxAmount = (taxableAmount * (taxRate || 0)) / 100;
+  const taxAmount = items.reduce((sum, item) => {
+    if (subtotal <= 0) return sum;
+    const itemDiscountShare = discountAmount * (item.amount / subtotal);
+    const itemTaxable = Math.max(0, item.amount - itemDiscountShare);
+    return sum + (itemTaxable * (item.taxRate || 0)) / 100;
+  }, 0);
   const grandTotal = taxableAmount + taxAmount + (Number(additionalCharges) || 0);
+
+  const distinctItemTaxRates = Array.from(new Set(items.map((i) => i.taxRate || 0)));
+  const hasMixedTaxRates = distinctItemTaxRates.length > 1;
+
+  const handleApplyTaxRateToAll = () => {
+    setItems(items.map((item) => ({ ...item, taxRate })));
+  };
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -382,6 +398,7 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
                   <th className="py-2.5 px-2 w-20">Satuan</th>
                   <th className="py-2.5 px-3 w-32 text-right">Harga Satuan (Rp)</th>
                   <th className="py-2.5 px-2 w-24 text-right">Potongan (Rp)</th>
+                  <th className="py-2.5 px-2 w-20 text-right">PPN (%)</th>
                   <th className="py-2.5 px-3 w-32 text-right">Subtotal</th>
                   <th className="py-2.5 px-2 w-10 text-center"></th>
                 </tr>
@@ -451,6 +468,18 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
                         min="0"
                         value={item.discount}
                         onChange={(e) => handleItemChange(idx, 'discount', Number(e.target.value))}
+                        className="w-full text-right rounded border border-slate-300 py-1.5 px-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </td>
+
+                    <td className="p-2 align-top">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={item.taxRate}
+                        onChange={(e) => handleItemChange(idx, 'taxRate', Number(e.target.value))}
+                        title="Tarif PPN khusus untuk baris ini"
                         className="w-full text-right rounded border border-slate-300 py-1.5 px-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </td>
@@ -560,9 +589,24 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
                   <option value={12}>12%</option>
                   <option value={0}>0% (Non-PKP / Bebas PPN)</option>
                 </select>
+                <button
+                  type="button"
+                  onClick={handleApplyTaxRateToAll}
+                  className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 underline"
+                  title="Set tarif ini ke semua baris item"
+                >
+                  Terapkan ke Semua
+                </button>
               </div>
               <span className="font-semibold text-slate-800">+{formatRupiah(taxAmount)}</span>
             </div>
+            {hasMixedTaxRates && (
+              <p className="text-[10px] text-amber-600 -mt-1">
+                Baris item memakai tarif PPN berbeda-beda ({distinctItemTaxRates.join('%, ')}%) — dihitung
+                per baris, bukan satu tarif rata untuk semua. Ubah tarif tiap baris di kolom "PPN (%)" pada
+                tabel item, atau klik "Terapkan ke Semua" untuk menyamakan.
+              </p>
+            )}
 
             {/* Additional Charges */}
             <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200">

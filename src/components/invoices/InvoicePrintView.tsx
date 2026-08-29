@@ -261,7 +261,13 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
             </div>
 
             <div className="flex justify-between text-slate-600 py-1">
-              <span>PPN ({invoice.taxRate}%):</span>
+              <span>
+                PPN{' '}
+                {new Set((invoice.items || []).map((it) => it.taxRate || 0)).size > 1
+                  ? '(gabungan beberapa tarif)'
+                  : `(${invoice.taxRate}%)`}
+                :
+              </span>
               <span className="font-mono font-semibold text-slate-900">+{formatRupiah(invoice.taxAmount)}</span>
             </div>
 

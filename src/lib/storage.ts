@@ -1745,15 +1745,42 @@ export class StorageService {
 
     if (!customer) throw new Error('Customer tidak valid');
 
-    // Recalculate totals
+    // Recalculate totals. Tax is computed PER ITEM using each line's own
+    // taxRate (not a single invoice-wide rate) - this matters when an
+    // invoice mixes items with different PPN treatment (e.g. 11% standar
+    // vs 0% ekspor/non-PKP). The invoice-level discount is prorated across
+    // items by their share of the subtotal before each item's tax is applied.
     const subtotal = invoiceData.items.reduce((sum, item) => sum + item.amount, 0);
     const discountAmount =
       invoiceData.discountType === 'percentage'
         ? (subtotal * (invoiceData.discountValue || 0)) / 100
         : invoiceData.discountValue || 0;
     const taxableAmount = Math.max(0, subtotal - discountAmount);
-    const taxRate = invoiceData.taxRate !== undefined ? invoiceData.taxRate : org.defaultTaxRate;
-    const taxAmount = (taxableAmount * taxRate) / 100;
+
+    let taxAmount = 0;
+    if (subtotal > 0) {
+      for (const item of invoiceData.items) {
+        const itemDiscountShare = discountAmount * (item.amount / subtotal);
+        const itemTaxable = Math.max(0, item.amount - itemDiscountShare);
+        taxAmount += (itemTaxable * (item.taxRate || 0)) / 100;
+      }
+    }
+
+    // invoice.taxRate stays a single summary number for display/reporting
+    // (e.g. the "PPN (11%)" line on the printout): if every item shares the
+    // same rate it's that rate; if rates are mixed, it's the effective
+    // blended rate (taxAmount / taxableAmount) so grandTotal-related displays
+    // that multiply taxableAmount * taxRate still land on the right figure.
+    const distinctItemRates = Array.from(new Set(invoiceData.items.map((i) => i.taxRate ?? 0)));
+    const taxRate =
+      distinctItemRates.length === 1
+        ? distinctItemRates[0]
+        : taxableAmount > 0
+        ? Math.round((taxAmount / taxableAmount) * 10000) / 100
+        : invoiceData.taxRate !== undefined
+        ? invoiceData.taxRate
+        : org.defaultTaxRate;
+
     const additionalCharges = invoiceData.additionalCharges || 0;
     const grandTotal = taxableAmount + taxAmount + additionalCharges;
 
@@ -1786,6 +1813,7 @@ export class StorageService {
         customerNpwp: customer.npwp,
         subtotal,
         discountAmount,
+        taxableAmount,
         taxAmount,
         grandTotal,
         paidAmount,
@@ -1829,6 +1857,7 @@ export class StorageService {
         discountType: invoiceData.discountType || 'fixed',
         discountValue: invoiceData.discountValue || 0,
         discountAmount,
+        taxableAmount,
         taxRate,
         taxAmount,
         additionalCharges,
