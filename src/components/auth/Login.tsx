@@ -238,7 +238,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           )}
           <div>
             <span className="text-xl font-extrabold tracking-tight text-slate-900">
-              {org.name || 'BillingFlow'}
+              {org.name || 'Invoice system'}
             </span>
             <span className="hidden sm:inline-block ml-2 px-2.5 py-0.5 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200/60 rounded-full">
               Portal Manajemen
