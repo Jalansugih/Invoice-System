@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StorageService, generateId } from '../../lib/storage';
-import { Organization, BankAccount } from '../../types';
+import { Organization, BankAccount, OrganizationType } from '../../types';
 import { SUPABASE_SQL_MIGRATION } from '../../lib/supabaseMigration';
 import { SupabaseService, MigrationResult } from '../../lib/supabaseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
@@ -687,6 +687,22 @@ export const SettingsView: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select
+                label="Jenis Organisasi / Badan Usaha"
+                value={org.organizationType}
+                onChange={(e) => setOrg({ ...org, organizationType: e.target.value as OrganizationType })}
+                options={[
+                  { value: 'pt', label: 'PT — Perseroan Terbatas' },
+                  { value: 'cv', label: 'CV — Commanditaire Vennootschap' },
+                  { value: 'firma', label: 'Firma' },
+                  { value: 'koperasi', label: 'Koperasi' },
+                  { value: 'yayasan', label: 'Yayasan' },
+                  { value: 'ud', label: 'UD — Usaha Dagang' },
+                  { value: 'perorangan', label: 'Usaha Perorangan' },
+                  { value: 'instansi', label: 'Instansi / Lembaga' },
+                  { value: 'other', label: 'Lainnya' },
+                ]}
+              />
               <Input
                 label="Nama Perusahaan / Merk Dagang"
                 value={org.name}
@@ -992,7 +1008,7 @@ export const SettingsView: React.FC = () => {
                   <span>Tenant ID Aktif</span>
                 </div>
                 <div className="text-sm font-mono font-bold text-purple-700 truncate">
-                  {org.id || 'org-001'}
+                  {org.id || '-'}
                 </div>
                 <div className="text-xs text-slate-500 mt-1 truncate">{org.name}</div>
               </div>

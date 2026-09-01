@@ -13,6 +13,7 @@ import {
   UserRole,
   BankTransaction,
   BankAccount,
+  BusinessDocument,
 } from '../types';
 
 export interface MigrationResult {
@@ -218,6 +219,7 @@ export class SupabaseService {
       return {
         id: orgData.id,
         name: orgData.name,
+        organizationType: (orgData.organization_type || 'pt') as Organization['organizationType'],
         tagline: orgData.tagline || '',
         logoUrl: orgData.logo_url || '',
         email: orgData.email,
@@ -260,6 +262,7 @@ export class SupabaseService {
       const { error } = await supabase.from('organizations').upsert({
         id: org.id,
         name: org.name,
+        organization_type: org.organizationType || 'pt',
         tagline: org.tagline,
         logo_url: org.logoUrl,
         email: org.email,
@@ -822,6 +825,7 @@ export class SupabaseService {
         amount: Number(d.amount) || 0,
         date: d.date,
         status: d.status,
+        parentDocumentId: d.parent_document_id || undefined,
         createdAt: d.created_at,
       }));
     } catch (e) {
@@ -845,6 +849,7 @@ export class SupabaseService {
         amount: doc.amount,
         date: doc.date,
         status: doc.status,
+        parent_document_id: doc.parentDocumentId || null,
       });
 
       return !error;
@@ -852,6 +857,40 @@ export class SupabaseService {
       console.error('Supabase saveDocument error:', e);
       return false;
     }
+  }
+
+  // =========================================================================
+  // 7B. BUSINESS TRANSACTION DOCUMENTS
+  // =========================================================================
+  public static async saveBusinessDocument(doc: BusinessDocument, orgId: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { error } = await supabase.from('business_documents').upsert({
+        id: doc.id, organization_id: orgId, document_type: doc.documentType, document_number: doc.documentNumber,
+        title: doc.title, customer_id: doc.customerId || null, customer_name: doc.customerName || null, date: doc.date,
+        valid_until: doc.validUntil || null, reference_number: doc.referenceNumber || null, parent_document_id: doc.parentDocumentId || null,
+        delivery_address: doc.deliveryAddress || null, notes: doc.notes || null, status: doc.status,
+        items: JSON.parse(JSON.stringify(doc.items)), subtotal: doc.subtotal, tax_amount: doc.taxAmount, grand_total: doc.grandTotal, updated_at: doc.updatedAt,
+      });
+      if (error) console.error('Supabase saveBusinessDocument error:', error);
+      return !error;
+    } catch (e) { console.error('Supabase saveBusinessDocument error:', e); return false; }
+  }
+
+  public static async fetchBusinessDocuments(orgId: string): Promise<BusinessDocument[]> {
+    if (!isSupabaseConfigured) return [];
+    try {
+      const { data, error } = await supabase.from('business_documents').select('*').eq('organization_id', orgId).order('date', { ascending: false });
+      if (error) throw error;
+      return (data || []).map((row: any) => ({
+        id: row.id, documentType: row.document_type, documentNumber: row.document_number, title: row.title,
+        customerId: row.customer_id || undefined, customerName: row.customer_name || undefined, date: row.date,
+        validUntil: row.valid_until || undefined, referenceNumber: row.reference_number || undefined, parentDocumentId: row.parent_document_id || undefined,
+        deliveryAddress: row.delivery_address || undefined, notes: row.notes || undefined, status: row.status,
+        items: Array.isArray(row.items) ? row.items : [], subtotal: Number(row.subtotal) || 0, taxAmount: Number(row.tax_amount) || 0,
+        grandTotal: Number(row.grand_total) || 0, createdAt: row.created_at, updatedAt: row.updated_at,
+      }));
+    } catch (e) { console.error('Supabase fetchBusinessDocuments error:', e); return []; }
   }
 
   // =========================================================================
@@ -917,6 +956,25 @@ export class SupabaseService {
   // 9. FULL LOCALSTORAGE TO SUPABASE MIGRATION ENGINE
   // =========================================================================
 
+  private static async resolveAuthenticatedOrganizationId(): Promise<string | null> {
+    if (!isSupabaseConfigured) return null;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      if (!userId) return null;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.organization_id || null;
+    } catch (e) {
+      console.error('Supabase resolveAuthenticatedOrganizationId error:', e);
+      return null;
+    }
+  }
+
   public static async migrateLocalStorageToSupabase(
     localData: {
       organization: Organization;
@@ -955,12 +1013,21 @@ export class SupabaseService {
     }
 
     try {
-      const orgId = localData.organization.id || 'org-001';
+      const localOrgId = localData.organization.id;
+      const authenticatedOrgId = await this.resolveAuthenticatedOrganizationId();
+      const orgId = authenticatedOrgId || (localOrgId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(localOrgId) ? localOrgId : null);
 
-      // 1. Migrate Organization
+      if (!orgId) {
+        result.errors.push('Organization ID cloud tidak ditemukan. Pastikan akun Supabase sudah login dan memiliki profile organisasi.');
+        result.message = 'Migrasi dihentikan: organisasi cloud belum teridentifikasi.';
+        return result;
+      }
+
+      // 1. Migrate Organization. Never send the legacy local org id to a UUID column.
       try {
-        await this.saveOrganization(localData.organization);
-        result.counts.organizations = 1;
+        const orgSaved = await this.saveOrganization({ ...localData.organization, id: orgId });
+        if (orgSaved) result.counts.organizations = 1;
+        else result.errors.push('Org Error: Supabase menolak penyimpanan organisasi.');
       } catch (e: any) {
         result.errors.push(`Org Error: ${e.message}`);
       }
@@ -970,6 +1037,7 @@ export class SupabaseService {
         for (const cust of localData.customers) {
           const ok = await this.saveCustomer(cust, orgId);
           if (ok) result.counts.customers++;
+          else result.errors.push(`Customer Error: ${cust.id} gagal disimpan (${cust.name}).`);
         }
       }
 
@@ -978,6 +1046,7 @@ export class SupabaseService {
         for (const prod of localData.products) {
           const ok = await this.saveProduct(prod, orgId);
           if (ok) result.counts.products++;
+          else result.errors.push(`Product Error: ${prod.id} gagal disimpan (${prod.name}).`);
         }
       }
 
@@ -988,6 +1057,8 @@ export class SupabaseService {
           if (ok) {
             result.counts.invoices++;
             result.counts.invoiceItems += inv.items?.length || 0;
+          } else {
+            result.errors.push(`Invoice Error: ${inv.id} gagal disimpan (${inv.invoiceNumber}).`);
           }
         }
       }
@@ -997,6 +1068,7 @@ export class SupabaseService {
         for (const pay of localData.payments) {
           const ok = await this.savePayment(pay, orgId);
           if (ok) result.counts.payments++;
+          else result.errors.push(`Payment Error: ${pay.id} gagal disimpan (${pay.paymentNumber}).`);
         }
       }
 
@@ -1005,6 +1077,7 @@ export class SupabaseService {
         for (const letter of localData.billingLetters) {
           const ok = await this.saveBillingLetter(letter, orgId);
           if (ok) result.counts.billingLetters++;
+          else result.errors.push(`Billing Letter Error: ${letter.id} gagal disimpan (${letter.letterNumber}).`);
         }
       }
 
@@ -1013,6 +1086,7 @@ export class SupabaseService {
         for (const doc of localData.documents) {
           const ok = await this.saveDocument(doc, orgId);
           if (ok) result.counts.documents++;
+          else result.errors.push(`Document Error: ${doc.id} gagal disimpan (${doc.documentNumber}).`);
         }
       }
 
@@ -1021,11 +1095,14 @@ export class SupabaseService {
         for (const log of localData.auditLogs) {
           const ok = await this.saveAuditLog(log, orgId);
           if (ok) result.counts.auditLogs++;
+          else result.errors.push(`Audit Error: ${log.id} gagal disimpan.`);
         }
       }
 
-      result.success = true;
-      result.message = `Migrasi berhasil! ${result.counts.invoices} Faktur, ${result.counts.customers} Pelanggan, ${result.counts.products} Produk, ${result.counts.payments} Pembayaran berhasil disinkronkan ke Supabase Cloud.`;
+      result.success = result.errors.length === 0;
+      result.message = result.success
+        ? `Migrasi berhasil! ${result.counts.invoices} Faktur, ${result.counts.customers} Pelanggan, ${result.counts.products} Produk, ${result.counts.payments} Pembayaran berhasil disinkronkan ke Supabase Cloud.`
+        : `Migrasi selesai dengan ${result.errors.length} masalah. Periksa daftar error sebelum menganggap data sudah tersinkron penuh.`;
       return result;
     } catch (err: any) {
       result.success = false;

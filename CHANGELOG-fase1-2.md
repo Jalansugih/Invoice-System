@@ -39,3 +39,27 @@ Pola ini jadi template untuk modul berikutnya (Billing Letter, Document, Audit L
 - ID untuk Bank Transaction (`bt-...`) belum diperbaiki — di luar scope Product, akan ditangani saat giliran fase Bank Reconciliation.
 - Tax/Coretax masih perlu desain skema tabel baru dari nol.
 - Transactional integrity (invoice + stok produk + audit log sebagai satu operasi atomic) masih fase terpisah.
+
+## v8 — Business Document Engine (2026-08-31)
+- Added operational documents: Quotation, PO Customer, Sales Order, Surat Jalan, and BAST.
+- Added `business_documents` Supabase table with tenant RLS, indexes, JSONB line items, and parent-document relation.
+- Added local-first CRUD and Supabase sync/hydration for business documents.
+- Added A4 print preview and PDF export for the new document types.
+- Added business-document sequence counters and audit trail entries.
+- Added `Order & Dokumen Transaksi` navigation entry.
+
+## Business Document Integration — 2026-08-31
+- Added one-click conversion **Quotation → PO → Surat Jalan → BAST**.
+- Added **PO / Surat Jalan / BAST → Invoice** conversion.
+- Customer, delivery address, item, quantity, unit, price, discount and tax are copied automatically.
+- Generated child documents keep `parentDocumentId` and the source document number in `referenceNumber` for traceability.
+- Prevented duplicate child documents and duplicate invoices from the same source document.
+
+## v10 — UX Hemat Waktu
+- Form dokumen dibuat kontekstual berdasarkan jenis dokumen.
+- Customer wajib dipilih dan data customer ditampilkan otomatis.
+- Produk terhubung ke Product Master untuk auto-fill deskripsi, satuan, harga, dan pajak.
+- Status dokumen baru otomatis Draft; parent document otomatis saat conversion.
+- Conversion ke Surat Jalan menghitung quantity yang masih tersisa.
+- Pencarian mencakup nomor dokumen, customer, dan referensi.
+- Aksi dokumen berikutnya ditampilkan langsung pada daftar dan preview.

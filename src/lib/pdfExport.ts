@@ -6,10 +6,16 @@ export interface ExportPdfOptions {
   elementId?: string;
   element?: HTMLElement | null;
   onProgress?: (progress: boolean) => void;
+  marginMm?: number;
+  addPageNumbers?: boolean;
 }
 
 /**
- * Export an HTML element to a professional, high-resolution A4 PDF file using jsPDF & html2canvas
+ * Export a printable HTML document to A4 PDF.
+ *
+ * Unlike the old implementation, this slices the rendered canvas into real
+ * A4-sized page chunks. That prevents long invoices/letters from being
+ * vertically scaled into one giant image and gives predictable page breaks.
  */
 export async function exportElementToPdf(options: ExportPdfOptions): Promise<void> {
   const {
@@ -17,26 +23,29 @@ export async function exportElementToPdf(options: ExportPdfOptions): Promise<voi
     elementId,
     element: targetElement,
     onProgress,
+    marginMm = 10,
+    addPageNumbers = true,
   } = options;
 
-  if (onProgress) onProgress(true);
+  onProgress?.(true);
 
   try {
     const el = targetElement || (elementId ? document.getElementById(elementId) : null);
-    if (!el) {
-      throw new Error('Elemen dokumen tidak ditemukan untuk diekspor ke PDF.');
-    }
+    if (!el) throw new Error('Elemen dokumen tidak ditemukan untuk diekspor ke PDF.');
 
-    // Capture using html2canvas with high scale for crisp print quality
+    // 2x is a good balance between readable text and file size.
     const canvas = await html2canvas(el, {
-      scale: 2.5, // Crisp 300+ DPI simulation
+      scale: 2,
       useCORS: true,
+      allowTaint: false,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: el.scrollWidth,
+      windowWidth: Math.max(el.scrollWidth, el.clientWidth),
+      windowHeight: Math.max(el.scrollHeight, el.clientHeight),
+      scrollX: 0,
+      scrollY: -window.scrollY,
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.98);
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -44,35 +53,61 @@ export async function exportElementToPdf(options: ExportPdfOptions): Promise<voi
       compress: true,
     });
 
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - marginMm * 2;
+    const contentHeight = pageHeight - marginMm * 2;
 
-    // A4 dimensions in mm are 210 x 297
-    const imgProps = pdf.getImageProperties(imgData);
-    const imgWidth = pdfWidth;
-    const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    // Convert the printable width to pixels, then derive the pixel height that
+    // fits inside one A4 content area at the same aspect ratio.
+    const pxPerMm = canvas.width / contentWidth;
+    const pageSliceHeightPx = Math.max(1, Math.floor(contentHeight * pxPerMm));
+    const totalPages = Math.ceil(canvas.height / pageSliceHeightPx);
 
-    let heightLeft = imgHeight;
-    let position = 0;
+    for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+      if (pageIndex > 0) pdf.addPage();
 
-    // Add first page
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-    heightLeft -= pdfHeight;
+      const sourceY = pageIndex * pageSliceHeightPx;
+      const sourceHeight = Math.min(pageSliceHeightPx, canvas.height - sourceY);
 
-    // Multi-page handling if invoice overflows standard A4 height
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pdfHeight;
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sourceHeight;
+      const ctx = pageCanvas.getContext('2d');
+      if (!ctx) throw new Error('Browser tidak dapat menyiapkan canvas PDF.');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      ctx.drawImage(
+        canvas,
+        0,
+        sourceY,
+        canvas.width,
+        sourceHeight,
+        0,
+        0,
+        pageCanvas.width,
+        pageCanvas.height,
+      );
+
+      const imageData = pageCanvas.toDataURL('image/jpeg', 0.94);
+      const renderedHeightMm = sourceHeight / pxPerMm;
+      pdf.addImage(imageData, 'JPEG', marginMm, marginMm, contentWidth, renderedHeightMm, undefined, 'FAST');
+
+      if (addPageNumbers) {
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(`Halaman ${pageIndex + 1} dari ${totalPages}`, pageWidth - marginMm, pageHeight - 4, {
+          align: 'right',
+        });
+      }
     }
 
-    // Save and trigger download
     pdf.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
   } catch (error) {
     console.error('Error generating PDF:', error);
     throw error;
   } finally {
-    if (onProgress) onProgress(false);
+    onProgress?.(false);
   }
 }

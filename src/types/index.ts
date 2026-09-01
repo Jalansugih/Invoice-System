@@ -18,8 +18,20 @@ export interface BankAccount {
   isDefault: boolean;
 }
 
+export type OrganizationType =
+  | 'pt'
+  | 'cv'
+  | 'firma'
+  | 'koperasi'
+  | 'yayasan'
+  | 'ud'
+  | 'perorangan'
+  | 'instansi'
+  | 'other';
+
 export interface Organization {
   id: string;
+  organizationType: OrganizationType;
   name: string;
   tagline?: string;
   logoUrl?: string;
@@ -218,6 +230,11 @@ export type DocumentType =
   | 'payment_receipt'
   | 'purchase_order'
   | 'quotation'
+  | 'sales_order'
+  | 'delivery_order'
+  | 'bast'
+  | 'credit_note'
+  | 'debit_note'
   | 'other';
 
 export interface DocumentItem {
@@ -227,7 +244,8 @@ export interface DocumentItem {
   documentNumber: string;
   customerId?: string;
   customerName?: string;
-  referenceId?: string; // e.g. invoice id
+  referenceId?: string; // source transaction/document id
+  parentDocumentId?: string; // previous document in the business-document chain
   amount?: number;
   date: string;
   status: string;
@@ -240,7 +258,7 @@ export interface AuditLog {
   userName: string;
   userRole: UserRole;
   action: 'create' | 'update' | 'delete' | 'send' | 'pay' | 'cancel' | 'status_change' | 'reconcile';
-  module: 'invoices' | 'payments' | 'customers' | 'billing_letters' | 'products' | 'settings' | 'auth' | 'reconciliation';
+  module: 'invoices' | 'payments' | 'customers' | 'billing_letters' | 'products' | 'settings' | 'auth' | 'reconciliation' | 'documents' | 'business_documents';
   recordId: string;
   recordTitle: string;
   entityType?: string;
@@ -338,3 +356,39 @@ export interface AgingReceivableGroup {
 
 // Re-export PostgreSQL Supabase Multi-Tenant Database Schema Types
 export * from './database';
+
+export type BusinessDocumentType = 'quotation' | 'purchase_order' | 'sales_order' | 'delivery_order' | 'bast';
+export type BusinessDocumentStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'confirmed' | 'shipped' | 'delivered' | 'completed' | 'cancelled';
+
+export interface BusinessDocumentItem {
+  id: string;
+  productId?: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  discount: number;
+  taxRate: number;
+}
+
+export interface BusinessDocument {
+  id: string;
+  documentType: BusinessDocumentType;
+  documentNumber: string;
+  title: string;
+  customerId?: string;
+  customerName?: string;
+  date: string;
+  validUntil?: string;
+  referenceNumber?: string;
+  parentDocumentId?: string;
+  deliveryAddress?: string;
+  notes?: string;
+  status: BusinessDocumentStatus;
+  items: BusinessDocumentItem[];
+  subtotal: number;
+  taxAmount: number;
+  grandTotal: number;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -13,6 +13,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+export type DbOrganizationType = 'pt' | 'cv' | 'firma' | 'koperasi' | 'yayasan' | 'ud' | 'perorangan' | 'instansi' | 'other';
+
 export type DbUserRole = 'owner' | 'admin' | 'finance' | 'staff' | 'viewer';
 
 export type DbInvoiceStatus =
@@ -50,6 +52,11 @@ export type DbDocumentType =
   | 'payment_receipt'
   | 'purchase_order'
   | 'quotation'
+  | 'sales_order'
+  | 'delivery_order'
+  | 'bast'
+  | 'credit_note'
+  | 'debit_note'
   | 'other';
 
 export type DbDiscountType = 'percentage' | 'fixed';
@@ -131,6 +138,12 @@ export interface Database {
         Update: DocumentUpdate;
         Relationships: [];
       };
+      business_documents: {
+        Row: BusinessDocumentRow;
+        Insert: BusinessDocumentInsert;
+        Update: BusinessDocumentUpdate;
+        Relationships: [];
+      };
       audit_logs: {
         Row: AuditLogRow;
         Insert: AuditLogInsert;
@@ -192,6 +205,7 @@ export interface Database {
       };
     };
     Enums: {
+      organization_type: DbOrganizationType;
       user_role: DbUserRole;
       invoice_status: DbInvoiceStatus;
       payment_method: DbPaymentMethod;
@@ -213,6 +227,7 @@ export interface Database {
  */
 export type OrganizationRow = {
   id: string;
+  organization_type: DbOrganizationType;
   name: string;
   tagline: string | null;
   logo_url: string | null;
@@ -241,6 +256,7 @@ export type OrganizationRow = {
 
 export type OrganizationInsert = {
   id?: string;
+  organization_type?: DbOrganizationType;
   name: string;
   tagline?: string | null;
   logo_url?: string | null;
@@ -269,6 +285,7 @@ export type OrganizationInsert = {
 
 export type OrganizationUpdate = {
   id?: string;
+  organization_type?: DbOrganizationType;
   name?: string;
   tagline?: string | null;
   logo_url?: string | null;
@@ -789,6 +806,7 @@ export type DocumentRow = {
   date: string;
   status: string | null;
   file_url: string | null;
+  parent_document_id: string | null;
   created_at: string;
 };
 
@@ -804,6 +822,7 @@ export type DocumentInsert = {
   date: string;
   status?: string | null;
   file_url?: string | null;
+  parent_document_id?: string | null;
   created_at?: string;
 };
 
@@ -819,8 +838,18 @@ export type DocumentUpdate = {
   date?: string;
   status?: string | null;
   file_url?: string | null;
+  parent_document_id?: string | null;
   created_at?: string;
 };
+
+export type BusinessDocumentRow = {
+  id: string; organization_id: string; document_type: DbDocumentType; document_number: string; title: string;
+  customer_id: string | null; customer_name: string | null; date: string; valid_until: string | null;
+  reference_number: string | null; parent_document_id: string | null; delivery_address: string | null; notes: string | null;
+  status: string; items: Json; subtotal: number; tax_amount: number; grand_total: number; created_at: string; updated_at: string;
+};
+export type BusinessDocumentInsert = Partial<Omit<BusinessDocumentRow, 'id' | 'organization_id'>> & { id?: string; organization_id: string; document_type: DbDocumentType; document_number: string; title: string; date: string };
+export type BusinessDocumentUpdate = Partial<BusinessDocumentRow>;
 
 export type DbAuditAction =
   | 'create'
@@ -840,7 +869,9 @@ export type DbAuditModule =
   | 'products'
   | 'settings'
   | 'auth'
-  | 'reconciliation';
+  | 'reconciliation'
+  | 'documents'
+  | 'business_documents';
 
 /**
  * 2.11 Audit Logs Table

@@ -12,6 +12,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 2. Organizations Table (Tenant Isolation Root)
 CREATE TABLE IF NOT EXISTS public.organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_type VARCHAR(30) NOT NULL DEFAULT 'pt' CHECK (organization_type IN ('pt','cv','firma','koperasi','yayasan','ud','perorangan','instansi','other')),
     name VARCHAR(255) NOT NULL,
     tagline VARCHAR(255),
     logo_url TEXT,
@@ -198,7 +199,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
-    document_type VARCHAR(50) NOT NULL CHECK (document_type IN ('invoice', 'billing_letter', 'payment_receipt', 'purchase_order', 'quotation', 'other')),
+    document_type VARCHAR(50) NOT NULL CHECK (document_type IN ('invoice', 'billing_letter', 'payment_receipt', 'purchase_order', 'quotation', 'sales_order', 'delivery_order', 'bast', 'credit_note', 'debit_note', 'other')),
     document_number VARCHAR(100) NOT NULL,
     customer_id UUID REFERENCES public.customers(id) ON DELETE SET NULL,
     reference_id UUID,
@@ -284,6 +285,8 @@ CREATE INDEX IF NOT EXISTS idx_payments_org ON public.payments(organization_id);
 CREATE INDEX IF NOT EXISTS idx_payments_invoice ON public.payments(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_billing_letters_org ON public.billing_letters(organization_id);
 CREATE INDEX IF NOT EXISTS idx_documents_org ON public.documents(organization_id);
+CREATE INDEX IF NOT EXISTS idx_documents_parent ON public.documents(parent_document_id);
+CREATE INDEX IF NOT EXISTS idx_documents_type_date ON public.documents(organization_id, document_type, date DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_org ON public.audit_logs(organization_id);
 
 -- =========================================================================

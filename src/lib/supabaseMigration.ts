@@ -494,4 +494,29 @@ DROP TRIGGER IF EXISTS trg_customer_balance_payment ON public.payments;
 CREATE TRIGGER trg_customer_balance_payment
 AFTER INSERT OR UPDATE OR DELETE ON public.payments
 FOR EACH ROW EXECUTE FUNCTION public.fn_sync_customer_balances();
+
+-- ========================================================================
+-- 7. DOCUMENT FOUNDATION: ORGANIZATION TYPE + BUSINESS DOCUMENT CHAIN
+-- ========================================================================
+ALTER TABLE public.organizations
+  ADD COLUMN IF NOT EXISTS organization_type VARCHAR(30) NOT NULL DEFAULT 'pt';
+
+ALTER TABLE public.organizations
+  DROP CONSTRAINT IF EXISTS organizations_organization_type_check;
+ALTER TABLE public.organizations
+  ADD CONSTRAINT organizations_organization_type_check
+  CHECK (organization_type IN ('pt','cv','firma','koperasi','yayasan','ud','perorangan','instansi','other'));
+
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS parent_document_id UUID REFERENCES public.documents(id) ON DELETE SET NULL;
+
+ALTER TABLE public.documents
+  DROP CONSTRAINT IF EXISTS documents_document_type_check;
+ALTER TABLE public.documents
+  ADD CONSTRAINT documents_document_type_check
+  CHECK (document_type IN ('invoice','billing_letter','payment_receipt','purchase_order','quotation','sales_order','delivery_order','bast','credit_note','debit_note','other'));
+
+CREATE INDEX IF NOT EXISTS idx_documents_parent ON public.documents(parent_document_id);
+CREATE INDEX IF NOT EXISTS idx_documents_type_date ON public.documents(organization_id, document_type, date DESC);
+
 `;

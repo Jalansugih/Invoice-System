@@ -43,9 +43,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onQuickInvoice,
   onOpenGuide,
 }) => {
-  const { user: authUser, signOut, signInDemoUser, refreshSession } = useAuth();
+  const { user: authUser, signOut, signInDemoUser, refreshSession, orgBootstrapError, retryOrgBootstrap } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetryingSync, setIsRetryingSync] = useState(false);
+  const [isRetryingOrgBootstrap, setIsRetryingOrgBootstrap] = useState(false);
   const [syncFailureCount, setSyncFailureCount] = useState(() => StorageService.getSyncFailures().length);
   const user = authUser || StorageService.getUser();
 
@@ -61,6 +62,15 @@ export const Navbar: React.FC<NavbarProps> = ({
       await StorageService.retryFailedSyncs();
     } finally {
       setIsRetryingSync(false);
+    }
+  };
+
+  const handleRetryOrgBootstrap = async () => {
+    setIsRetryingOrgBootstrap(true);
+    try {
+      await retryOrgBootstrap();
+    } finally {
+      setIsRetryingOrgBootstrap(false);
     }
   };
 
@@ -103,6 +113,29 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
+    <>
+      {/* Critical: organization/profile failed to bootstrap in Supabase.
+          This is more severe than a normal per-entity sync failure - if
+          this is set, nothing the user does in this session will actually
+          persist to the cloud, so it gets a full-width, hard-to-miss
+          banner instead of the small "N belum sinkron" pill below. */}
+      {orgBootstrapError && (
+        <div className="w-full bg-red-600 text-white px-4 py-2 flex items-center justify-between gap-3 text-xs sm:text-sm shrink-0 z-30">
+          <div className="flex items-center gap-2 min-w-0">
+            <CloudOff className="w-4 h-4 shrink-0" />
+            <span className="truncate">{orgBootstrapError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRetryOrgBootstrap}
+            disabled={isRetryingOrgBootstrap}
+            className="shrink-0 flex items-center gap-1.5 bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-md font-semibold disabled:opacity-60 cursor-pointer"
+          >
+            {isRetryingOrgBootstrap ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Coba Lagi
+          </button>
+        </div>
+      )}
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 shrink-0 z-20">
       {/* Left: Mobile Toggle + Breadcrumbs */}
       <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
@@ -235,5 +268,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
       </div>
     </header>
+    </>
   );
 };

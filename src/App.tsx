@@ -24,6 +24,7 @@ import { ReceiptPrintView } from './components/payments/ReceiptPrintView';
 import { BankReconciliationView } from './components/reconciliation/BankReconciliationView';
 import { TaxReportsView } from './components/tax/TaxReportsView';
 import { DocumentHub } from './components/documents/DocumentHub';
+import { BusinessDocumentsView } from './components/business/BusinessDocumentsView';
 import { FinancialReportsView } from './components/reports/FinancialReportsView';
 import { AuditTrailView } from './components/audit/AuditTrailView';
 import { SettingsView } from './components/settings/SettingsView';
@@ -48,6 +49,7 @@ export default function App() {
       'tax',
       'tax_reports',
       'documents',
+      'business_documents',
       'reports',
       'audit',
       'settings',
@@ -363,6 +365,8 @@ export default function App() {
                     }}
                   />
                 )}
+
+                {currentTab === 'business_documents' && <BusinessDocumentsView />}
 
                 {currentTab === 'documents' && (
                   <DocumentHub

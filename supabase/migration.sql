@@ -11,6 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 2. Organizations Table (Multi-tenant Root)
 CREATE TABLE IF NOT EXISTS public.organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_type VARCHAR(30) NOT NULL DEFAULT 'pt' CHECK (organization_type IN ('pt','cv','firma','koperasi','yayasan','ud','perorangan','instansi','other')),
     name VARCHAR(255) NOT NULL,
     tagline VARCHAR(255),
     logo_url TEXT,
@@ -196,7 +197,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
-    document_type VARCHAR(50) NOT NULL CHECK (document_type IN ('invoice', 'billing_letter', 'payment_receipt', 'purchase_order', 'quotation', 'other')),
+    document_type VARCHAR(50) NOT NULL CHECK (document_type IN ('invoice', 'billing_letter', 'payment_receipt', 'purchase_order', 'quotation', 'sales_order', 'delivery_order', 'bast', 'credit_note', 'debit_note', 'other')),
     document_number VARCHAR(100) NOT NULL,
     customer_id UUID REFERENCES public.customers(id) ON DELETE SET NULL,
     reference_id UUID,
@@ -204,6 +205,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
     date DATE NOT NULL,
     status VARCHAR(50),
     file_url TEXT,
+    parent_document_id UUID REFERENCES public.documents(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -279,6 +281,8 @@ CREATE INDEX IF NOT EXISTS idx_payments_org ON public.payments(organization_id);
 CREATE INDEX IF NOT EXISTS idx_payments_invoice ON public.payments(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_billing_letters_org ON public.billing_letters(organization_id);
 CREATE INDEX IF NOT EXISTS idx_documents_org ON public.documents(organization_id);
+CREATE INDEX IF NOT EXISTS idx_documents_parent ON public.documents(parent_document_id);
+CREATE INDEX IF NOT EXISTS idx_documents_type_date ON public.documents(organization_id, document_type, date DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_org ON public.audit_logs(organization_id);
 
 -- 15. Enable Row Level Security (RLS) on ALL tables
@@ -309,12 +313,45 @@ CREATE POLICY "Profiles isolation policy" ON public.profiles
     USING (id = auth.uid() OR organization_id = public.get_auth_org_id())
     WITH CHECK (id = auth.uid() OR organization_id = public.get_auth_org_id());
 
--- Organizations: Users can view and update their own organization
+-- Organizations: Users can view and update their own organization.
+-- NOTE: a single "FOR ALL" policy checking id = get_auth_org_id() would also
+-- gate INSERT. For a brand-new user, public.profiles has no row yet, so
+-- get_auth_org_id() returns NULL and the very first organization INSERT
+-- (done during sign-up bootstrap) would always be rejected by RLS - a
+-- chicken-and-egg bug that silently breaks all first-time sign-ups. We
+-- split this into scoped policies and open INSERT to any authenticated
+-- user instead (previously fixed ad-hoc in migration_v6_fix_org_bootstrap.sql;
+-- merged here so a fresh database created from this consolidated file does
+-- not need that patch applied separately).
 DROP POLICY IF EXISTS "Organizations isolation policy" ON public.organizations;
-CREATE POLICY "Organizations isolation policy" ON public.organizations
-    FOR ALL
+DROP POLICY IF EXISTS "Organizations multi-tenant policy" ON public.organizations;
+DROP POLICY IF EXISTS "Organizations: view own org" ON public.organizations;
+DROP POLICY IF EXISTS "Organizations: update own org" ON public.organizations;
+DROP POLICY IF EXISTS "Organizations: delete own org" ON public.organizations;
+DROP POLICY IF EXISTS "Organizations: authenticated can bootstrap" ON public.organizations;
+
+CREATE POLICY "Organizations: view own org" ON public.organizations
+    FOR SELECT
+    USING (id = public.get_auth_org_id());
+
+CREATE POLICY "Organizations: update own org" ON public.organizations
+    FOR UPDATE
     USING (id = public.get_auth_org_id())
     WITH CHECK (id = public.get_auth_org_id());
+
+CREATE POLICY "Organizations: delete own org" ON public.organizations
+    FOR DELETE
+    USING (id = public.get_auth_org_id());
+
+-- Bootstrap: any authenticated user may create an organization row (needed
+-- because their profile - and therefore get_auth_org_id() - does not exist
+-- yet at sign-up time). The app immediately links a profiles row to it in
+-- the same flow, so this does not let a user attach to or take over an
+-- existing organization; it only allows creating a brand-new one.
+CREATE POLICY "Organizations: authenticated can bootstrap" ON public.organizations
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (true);
 
 -- Bank Accounts
 DROP POLICY IF EXISTS "Bank accounts isolation policy" ON public.bank_accounts;
@@ -378,3 +415,48 @@ CREATE POLICY "Audit logs isolation policy" ON public.audit_logs
     FOR ALL
     USING (organization_id = public.get_auth_org_id())
     WITH CHECK (organization_id = public.get_auth_org_id());
+
+
+-- BillingFlow v8: operational business documents
+-- Quotation -> PO -> Sales Order -> Delivery Order -> BAST
+-- Run after v7. Safe to re-run.
+
+CREATE TABLE IF NOT EXISTS public.business_documents (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  document_type VARCHAR(30) NOT NULL CHECK (document_type IN ('quotation','purchase_order','sales_order','delivery_order','bast')),
+  document_number VARCHAR(100) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  customer_id UUID REFERENCES public.customers(id) ON DELETE SET NULL,
+  customer_name VARCHAR(255),
+  date DATE NOT NULL,
+  valid_until DATE,
+  reference_number VARCHAR(150),
+  parent_document_id UUID REFERENCES public.business_documents(id) ON DELETE SET NULL,
+  delivery_address TEXT,
+  notes TEXT,
+  status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','sent','approved','rejected','confirmed','shipped','delivered','completed','cancelled')),
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  subtotal NUMERIC(18,2) NOT NULL DEFAULT 0,
+  tax_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  grand_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (organization_id, document_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_business_documents_org_date ON public.business_documents(organization_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_business_documents_org_type ON public.business_documents(organization_id, document_type);
+CREATE INDEX IF NOT EXISTS idx_business_documents_parent ON public.business_documents(parent_document_id);
+CREATE INDEX IF NOT EXISTS idx_business_documents_customer ON public.business_documents(organization_id, customer_id);
+
+ALTER TABLE public.business_documents ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS business_documents_select ON public.business_documents;
+DROP POLICY IF EXISTS business_documents_insert ON public.business_documents;
+DROP POLICY IF EXISTS business_documents_update ON public.business_documents;
+DROP POLICY IF EXISTS business_documents_delete ON public.business_documents;
+CREATE POLICY business_documents_select ON public.business_documents FOR SELECT USING (organization_id = public.get_auth_org_id());
+CREATE POLICY business_documents_insert ON public.business_documents FOR INSERT WITH CHECK (organization_id = public.get_auth_org_id());
+CREATE POLICY business_documents_update ON public.business_documents FOR UPDATE USING (organization_id = public.get_auth_org_id()) WITH CHECK (organization_id = public.get_auth_org_id());
+CREATE POLICY business_documents_delete ON public.business_documents FOR DELETE USING (organization_id = public.get_auth_org_id());
+

@@ -24,6 +24,12 @@ interface AuthContextType {
   isConfigured: boolean;
   backendHealth: BackendHealthStatus;
   isPasswordRecovery: boolean;
+  /** Set when the organization/profile bootstrap in ensureProfile() fails
+   * (e.g. rejected by RLS). Null when everything is fine. This is more
+   * severe than a normal per-entity sync failure: if this is set, nothing
+   * else for this user can be saved to the cloud either. */
+  orgBootstrapError: string | null;
+  retryOrgBootstrap: () => Promise<void>;
   checkBackendHealth: () => Promise<BackendHealthStatus>;
   signInWithPassword: (credentials: { email: string; password: string }) => Promise<{ error: Error | null; data: any }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
@@ -47,6 +53,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const DEMO_STORAGE_KEY = 'billingflow_auth_demo_user';
+const IS_DEV = import.meta.env.DEV;
 
 /**
  * Translates Supabase Auth error messages into actionable, clear Indonesian explanations.
@@ -90,6 +97,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(false);
+  const [orgBootstrapError, setOrgBootstrapError] = useState<string | null>(null);
   const [backendHealth, setBackendHealth] = useState<BackendHealthStatus>({
     isConfigured: isSupabaseConfigured,
     connected: false,
@@ -98,89 +106,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
 
   // Ensure organization and profile exist in Supabase PostgreSQL
-  const ensureProfile = async (sbUser: User, fallbackOrgName?: string): Promise<UserProfile> => {
-    const meta = sbUser.user_metadata || {};
-    let orgId = meta.organization_id;
-
-    // Generate valid UUID for organization if missing
-    if (!orgId) {
-      orgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'org-001';
+  const ensureProfile = async (sbUser: User, _fallbackOrgName?: string): Promise<UserProfile> => {
+    if (!isSupabaseConfigured) {
+      if (!IS_DEV) throw new Error('Supabase belum dikonfigurasi untuk deployment produksi.');
+      const meta = sbUser.user_metadata || {};
+      return {
+        id: sbUser.id,
+        name: meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Pengguna',
+        email: sbUser.email || '',
+        role: (meta.role as UserRole) || 'owner',
+        avatarUrl: meta.avatar_url,
+        organizationId: meta.organization_id || '',
+      };
     }
 
-    const orgName = fallbackOrgName || meta.organization_name || 'PT BillingFlow Solusi Finansial';
-    const fullName = meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Pengguna';
-    const userRole = (meta.role as UserRole) || 'owner';
+    // Tenant bootstrap is performed by the database trigger on auth.users.
+    // The browser is deliberately NOT allowed to create/link an organization
+    // or choose a privileged role. This prevents tenant takeover and client-side
+    // privilege escalation.
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('id, organization_id, name, email, role, avatar_url')
+      .eq('id', sbUser.id)
+      .maybeSingle();
 
-    if (isSupabaseConfigured) {
-      try {
-        // 1. Ensure Organization row exists first (satisfying Foreign Key constraint)
-        const { data: existingOrg } = await supabase
-          .from('organizations')
-          .select('id, name')
-          .eq('id', orgId)
-          .maybeSingle();
-
-        if (!existingOrg) {
-          const currentOrg = StorageService.getOrganization();
-          await supabase.from('organizations').upsert({
-            id: orgId,
-            name: orgName,
-            email: sbUser.email || currentOrg.email,
-            phone: currentOrg.phone || null,
-            address: currentOrg.address || null,
-            city: currentOrg.city || null,
-            province: currentOrg.province || null,
-            postal_code: currentOrg.postalCode || null,
-            npwp: currentOrg.npwp || null,
-            website: currentOrg.website || null,
-            default_tax_rate: currentOrg.defaultTaxRate || 11,
-            default_currency: currentOrg.defaultCurrency || 'IDR',
-            timezone: currentOrg.timezone || 'Asia/Jakarta',
-            invoice_format: currentOrg.invoiceFormat || 'INV/{YEAR}/{MONTH}/{NUMBER}',
-            billing_letter_format: currentOrg.billingLetterFormat || 'ST/{YEAR}/{MONTH}/{NUMBER}',
-            payment_receipt_format: currentOrg.paymentReceiptFormat || 'KWT/{YEAR}/{MONTH}/{NUMBER}',
-            default_payment_terms_days: currentOrg.defaultPaymentTermsDays || 14,
-          }, { onConflict: 'id' });
-        }
-
-        // 2. Fetch or Upsert Profile in public.profiles
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('id, organization_id, name, email, role, avatar_url')
-          .eq('id', sbUser.id)
-          .maybeSingle();
-
-        if (existingProfile) {
-          return {
-            id: existingProfile.id,
-            organizationId: existingProfile.organization_id || orgId,
-            name: existingProfile.name || fullName,
-            email: existingProfile.email || sbUser.email || '',
-            role: (existingProfile.role as UserRole) || userRole,
-            avatarUrl: existingProfile.avatar_url || meta.avatar_url,
-          };
-        } else {
-          await supabase.from('profiles').upsert({
-            id: sbUser.id,
-            organization_id: orgId,
-            name: fullName,
-            email: sbUser.email || '',
-            role: userRole,
-            avatar_url: meta.avatar_url || null,
-          }, { onConflict: 'id' });
-        }
-      } catch (e) {
-        console.error('[AuthProvider] Error ensuring profile and organization in Supabase:', e);
-      }
+    if (error) {
+      setOrgBootstrapError('Profil pengguna gagal dibaca dari database. Periksa RLS dan migrasi Supabase.');
+      throw error;
     }
 
+    if (!profile?.organization_id) {
+      const err = new Error('Profil organisasi belum terbentuk. Jalankan migrasi produksi dan coba login kembali.');
+      setOrgBootstrapError(err.message);
+      throw err;
+    }
+
+    setOrgBootstrapError(null);
     return {
-      id: sbUser.id,
-      name: fullName,
-      email: sbUser.email || '',
-      role: userRole,
-      avatarUrl: meta.avatar_url,
-      organizationId: orgId,
+      id: profile.id,
+      organizationId: profile.organization_id,
+      name: profile.name || sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Pengguna',
+      email: profile.email || sbUser.email || '',
+      role: (profile.role as UserRole) || 'owner',
+      avatarUrl: profile.avatar_url || sbUser.user_metadata?.avatar_url,
     };
   };
 
@@ -193,13 +161,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       email: sbUser.email || '',
       role: (meta.role as UserRole) || 'owner',
       avatarUrl: meta.avatar_url,
-      organizationId: meta.organization_id || 'org-001',
+      organizationId: meta.organization_id || '00000000-0000-4000-8000-000000000001',
     };
   };
 
   // Real-time backend connection check
   const checkBackendHealth = async (): Promise<BackendHealthStatus> => {
-    if (!isSupabaseConfigured) {
+    if (!isSupabaseConfigured && IS_DEV) {
       const status: BackendHealthStatus = {
         isConfigured: false,
         connected: false,
@@ -354,8 +322,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return () => {
             subscription.unsubscribe();
           };
-        } else {
-          // In local/demo mode without live Supabase keys
+        } else if (IS_DEV) {
+          // Offline/demo mode exists only for local development.
           const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
           if (savedDemo) {
             try {
@@ -392,7 +360,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signInWithPassword = async ({ email, password }: { email: string; password: string }) => {
     setLoading(true);
     try {
-      if (!isSupabaseConfigured) {
+      if (!isSupabaseConfigured && IS_DEV) {
         const existingUsers: Record<string, { name: string; role: UserRole }> = {
           'owner@billingflow.id': { name: 'Ir. Ahmad Fauzi (Direktur)', role: 'owner' },
           'admin@billingflow.id': { name: 'Budi Santoso (Admin Operasional)', role: 'admin' },
@@ -411,7 +379,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           name: match.name,
           email,
           role: match.role,
-          organizationId: 'org-001',
+          organizationId: '00000000-0000-4000-8000-000000000001',
         };
 
         setUser(demoProfile);
@@ -419,6 +387,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         StorageService.setCurrentUser(demoProfile);
         setLoading(false);
         return { error: null, data: { user: demoProfile, session: null } };
+      }
+
+      if (!isSupabaseConfigured) {
+        setLoading(false);
+        return { error: new Error('Supabase belum dikonfigurasi. Hubungi administrator aplikasi.'), data: null };
       }
 
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -505,14 +478,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }) => {
     setLoading(true);
     try {
-      const orgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `org-${Date.now()}`;
       const effectiveOrgName = organizationName || 'Perusahaan Baru';
 
-      if (organizationName) {
-        StorageService.updateOrganization({ name: effectiveOrgName });
-      }
-
-      if (!isSupabaseConfigured) {
+      if (!isSupabaseConfigured && IS_DEV) {
+        const orgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${String(Date.now()).slice(-12)}`;
         const demoProfile: UserProfile = {
           id: `usr-${Date.now()}`,
           name,
@@ -527,14 +496,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { error: null, data: { user: demoProfile } };
       }
 
+      if (!isSupabaseConfigured) {
+        setLoading(false);
+        return { error: new Error('Supabase belum dikonfigurasi. Deployment produksi belum siap menerima pendaftaran.'), data: null };
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: name,
-            role,
-            organization_id: orgId,
+            // The DB trigger assigns the initial role and tenant safely.
             organization_name: effectiveOrgName,
           },
         },
@@ -556,14 +529,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         StorageService.setCurrentUser(profile);
         localStorage.removeItem(DEMO_STORAGE_KEY);
 
-        // Pre-create organization record in Supabase
-        await SupabaseService.saveOrganization({
-          ...StorageService.getOrganization(),
-          id: orgId,
-          name: effectiveOrgName,
-          email,
-        });
-
         if (data.session) {
           await StorageService.hydrateFromSupabase(profile.organizationId);
         }
@@ -580,7 +545,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Reset Password for Email
   const resetPasswordForEmail = async (email: string) => {
     if (!isSupabaseConfigured) {
-      return { error: null };
+      return { error: new Error('Supabase belum dikonfigurasi. Hubungi administrator aplikasi.') };
     }
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -601,8 +566,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       if (!isSupabaseConfigured) {
         setLoading(false);
-        setIsPasswordRecovery(false);
-        return { error: null, data: { user } };
+        return { error: new Error('Supabase belum dikonfigurasi. Hubungi administrator aplikasi.'), data: null };
       }
       const { data, error } = await supabase.auth.updateUser({
         password,
@@ -624,7 +588,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const refreshSession = async () => {
     try {
       if (!isSupabaseConfigured) {
-        return { error: null, data: { session, user } };
+        return { error: new Error('Supabase belum dikonfigurasi. Hubungi administrator aplikasi.'), data: null };
       }
       const { data, error } = await supabase.auth.refreshSession();
       if (error) {
@@ -666,6 +630,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Fast switch demo role
   const signInDemoUser = (role: UserRole = 'admin') => {
+    if (!IS_DEV || isSupabaseConfigured) return;
     const demoMap: Record<UserRole, { name: string; email: string }> = {
       owner: { name: 'Ir. Ahmad Fauzi', email: 'owner@billingflow.id' },
       admin: { name: 'Budi Santoso (Admin)', email: 'admin@billingflow.id' },
@@ -680,7 +645,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       name: target.name,
       email: target.email,
       role,
-      organizationId: 'org-001',
+      organizationId: '00000000-0000-4000-8000-000000000001',
     };
 
     setUser(demoProfile);
@@ -694,7 +659,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updated = { ...user, role };
     setUser(updated);
     StorageService.setCurrentUser(updated);
-    if (!isSupabaseConfigured) {
+    if (IS_DEV && !isSupabaseConfigured) {
       localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(updated));
     }
   };
@@ -722,6 +687,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Lets the UI offer a "Coba lagi" button instead of forcing a full
+  // sign-out/sign-in cycle when the organization/profile bootstrap failed.
+  const retryOrgBootstrap = async () => {
+    if (!supabaseUser) return;
+    const profile = await ensureProfile(supabaseUser);
+    setUser(profile);
+    StorageService.setCurrentUser(profile);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -732,6 +706,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isConfigured: isSupabaseConfigured,
         backendHealth,
         isPasswordRecovery,
+        orgBootstrapError,
+        retryOrgBootstrap,
         checkBackendHealth,
         signInWithPassword,
         signInWithGoogle,

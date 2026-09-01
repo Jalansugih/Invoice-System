@@ -8,6 +8,7 @@ import {
   Payment,
   BillingLetter,
   DocumentItem,
+  BusinessDocument,
   AuditLog,
   NotificationItem,
   DashboardStats,
@@ -58,6 +59,7 @@ const STORAGE_KEYS = {
   PAYMENTS: 'billingflow_payments',
   BILLING_LETTERS: 'billingflow_billing_letters',
   DOCUMENTS: 'billingflow_documents',
+  BUSINESS_DOCUMENTS: 'billingflow_business_documents',
   AUDIT_LOGS: 'billingflow_audit_logs',
   NOTIFICATIONS: 'billingflow_notifications',
   SEQUENCES: 'billingflow_sequences',
@@ -67,7 +69,8 @@ const STORAGE_KEYS = {
 
 // Default organization
 export const initialOrganization: Organization = {
-  id: 'org-001',
+  id: '00000000-0000-4000-8000-000000000001',
+  organizationType: 'pt',
   name: 'PT BillingFlow Solusi Finansial',
   tagline: 'Sistem Penagihan & Manajemen Keuangan Terpadu',
   logoUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=160&auto=format&fit=crop&q=80',
@@ -115,7 +118,7 @@ export const initialUser: UserProfile = {
   email: 'fauzi@billingflow.id',
   role: 'owner',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  organizationId: 'org-001',
+  organizationId: '00000000-0000-4000-8000-000000000001',
 };
 
 export const initialCustomers: Customer[] = [
@@ -908,6 +911,11 @@ export const initialSequences = {
   receipt: 2,
   customer: 5,
   product: 5,
+  quotation: 0,
+  purchaseOrder: 0,
+  salesOrder: 0,
+  deliveryOrder: 0,
+  bast: 0,
 };
 
 // Storage Service Wrapper
@@ -1475,13 +1483,14 @@ export class StorageService {
       const orgId = organizationId || this.getSyncOrgId();
       if (!orgId) return false;
 
-      const [customers, invoices, payments, products, billingLetters, documents, auditLogs, organization] = await Promise.all([
+      const [customers, invoices, payments, products, billingLetters, documents, businessDocuments, auditLogs, organization] = await Promise.all([
         SupabaseService.fetchCustomers(orgId),
         SupabaseService.fetchInvoices(orgId),
         SupabaseService.fetchPayments(orgId),
         SupabaseService.fetchProducts(orgId),
         SupabaseService.fetchBillingLetters(orgId),
         SupabaseService.fetchDocuments(orgId),
+        SupabaseService.fetchBusinessDocuments(orgId),
         SupabaseService.fetchAuditLogs(orgId),
         SupabaseService.getOrganization(orgId),
       ]);
@@ -1497,6 +1506,7 @@ export class StorageService {
       localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
       localStorage.setItem(STORAGE_KEYS.BILLING_LETTERS, JSON.stringify(billingLetters));
       localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(documents));
+      localStorage.setItem(STORAGE_KEYS.BUSINESS_DOCUMENTS, JSON.stringify(businessDocuments));
       // Audit logs are append-only and capped locally at 200 entries for UI
       // performance; Supabase is the real source of truth for full history.
       localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(auditLogs));
@@ -1546,7 +1556,7 @@ export class StorageService {
     // user's org) because org.id itself IS the org id here - and because
     // this can run before a full login (e.g. right after signup), we sync
     // whenever org.id looks like a real UUID rather than the local-only
-    // 'org-001' placeholder used before any cloud org exists.
+    // 'legacy local placeholder' placeholder used before any cloud org exists.
     if (!isValidUUID(org.id)) return;
     this.trackedSync('organizations', org.id, org.name, () => SupabaseService.saveOrganization(org));
   }
@@ -2406,6 +2416,45 @@ export class StorageService {
     return newDoc;
   }
 
+  // Business transaction documents (Quotation / PO / SO / Surat Jalan / BAST)
+  public static getBusinessDocuments(): BusinessDocument[] {
+    return this.getItem<BusinessDocument[]>(STORAGE_KEYS.BUSINESS_DOCUMENTS, []);
+  }
+
+  public static nextBusinessDocumentSequence(key: string): number {
+    const current = this.getSequences() as typeof initialSequences & Record<string, number>;
+    const next = (Number(current[key]) || 0) + 1;
+    this.updateSequences({ [key]: next } as Partial<typeof initialSequences>);
+    return next;
+  }
+
+  public static addBusinessDocument(doc: BusinessDocument): BusinessDocument {
+    const docs = this.getBusinessDocuments();
+    docs.unshift(doc);
+    this.setItem(STORAGE_KEYS.BUSINESS_DOCUMENTS, docs);
+    this.syncBusinessDocumentToSupabase(doc);
+    this.addAuditLog('create', 'documents', doc.id, doc.documentNumber, `Membuat ${doc.title}`);
+    return doc;
+  }
+
+  public static updateBusinessDocument(doc: BusinessDocument): BusinessDocument {
+    const docs = this.getBusinessDocuments();
+    const index = docs.findIndex(d => d.id === doc.id);
+    if (index >= 0) docs[index] = doc; else docs.unshift(doc);
+    this.setItem(STORAGE_KEYS.BUSINESS_DOCUMENTS, docs);
+    this.syncBusinessDocumentToSupabase(doc);
+    this.addAuditLog('update', 'documents', doc.id, doc.documentNumber, `Memperbarui ${doc.title}`);
+    return doc;
+  }
+
+  private static syncBusinessDocumentToSupabase(doc: BusinessDocument) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return;
+    this.trackedSync('business_documents', doc.id, doc.documentNumber, () =>
+      SupabaseService.saveBusinessDocument(doc, orgId)
+    );
+  }
+
   // Audit Logs
   public static getAuditLogs(): AuditLog[] {
     return this.getItem<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, initialAuditLogs);
@@ -3216,6 +3265,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.PAYMENTS, initialPayments);
     this.setItem(STORAGE_KEYS.BILLING_LETTERS, initialBillingLetters);
     this.setItem(STORAGE_KEYS.DOCUMENTS, initialDocuments);
+    this.setItem(STORAGE_KEYS.BUSINESS_DOCUMENTS, []);
     this.setItem(STORAGE_KEYS.AUDIT_LOGS, initialAuditLogs);
     this.setItem(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
     this.setItem(STORAGE_KEYS.SEQUENCES, initialSequences);

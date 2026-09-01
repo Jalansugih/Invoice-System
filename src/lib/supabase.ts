@@ -1,19 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '../types/database';
 
-const envUrl = import.meta.env.VITE_SUPABASE_URL;
-const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const envUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+const envKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = Boolean(
   envUrl &&
   envKey &&
-  envUrl.startsWith('http') &&
-  !envUrl.includes('placeholder')
+  /^https:\/\/[^\s/]+(?:\.[^\s/]+)+/i.test(envUrl) &&
+  !envUrl.includes('placeholder') &&
+  !envKey.includes('dummy')
 );
 
-// Fallback to avoid crash if environment variables are not set during initial run
-const supabaseUrl = isSupabaseConfigured ? envUrl : 'https://billingflow-demo.supabase.co';
-const supabaseAnonKey = isSupabaseConfigured ? envKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy';
+// Never ship a fake Supabase endpoint/key. In development the app may render
+// its offline/demo UI, but production must fail closed until real credentials
+// are supplied through Vercel Environment Variables.
+const supabaseUrl = envUrl || 'https://invalid.local';
+const supabaseAnonKey = envKey || 'invalid-anon-key';
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {

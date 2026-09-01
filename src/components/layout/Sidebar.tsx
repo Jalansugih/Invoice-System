@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Receipt,
   FileSpreadsheet,
+  ClipboardList,
   BookOpen,
   HelpCircle,
 } from 'lucide-react';
@@ -87,6 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           badge: overdueCount > 0 ? overdueCount : null,
           badgeVariant: 'danger',
         },
+        { id: 'business_documents', label: 'Order & Dokumen Transaksi', icon: ClipboardList },
         {
           id: 'billing_letters',
           label: 'Surat Tagihan (SP)',

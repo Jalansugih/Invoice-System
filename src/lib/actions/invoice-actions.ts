@@ -252,7 +252,7 @@ export async function createInvoiceAction(
 
     if (!organizationId) {
       const currentOrg = StorageService.getOrganization();
-      organizationId = currentOrg.id || 'org-001';
+      organizationId = currentOrg.id || '00000000-0000-4000-8000-000000000001';
     }
 
     // 2. Validate Customer Existence
