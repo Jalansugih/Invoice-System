@@ -86,6 +86,35 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
     }
   }, [isPasswordRecovery]);
 
+  // Google/Supabase OAuth redirects back to this page with `?error=...` (or
+  // sometimes only inside the `#...` hash) whenever the login did NOT
+  // succeed - e.g. the user cancelled the Google consent screen, the
+  // Google Cloud "Authorized redirect URI" doesn't match the Supabase
+  // callback URL, or the Google provider isn't enabled in the Supabase
+  // dashboard. Without this, the app silently drops the user back on the
+  // login screen with a dirty URL and zero feedback, which feels broken.
+  useEffect(() => {
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const oauthError = search.get('error') || hash.get('error');
+    const oauthErrorDescription = search.get('error_description') || hash.get('error_description');
+
+    if (oauthError) {
+      if (oauthError === 'access_denied') {
+        setErrorMsg('Login Google dibatalkan. Silakan coba lagi jika ingin masuk dengan akun Google.');
+      } else {
+        setErrorMsg(
+          `Login Google gagal (${oauthError}). ${
+            oauthErrorDescription ? decodeURIComponent(oauthErrorDescription.replace(/\+/g, ' ')) : 'Periksa konfigurasi provider Google di dashboard Supabase.'
+          }`
+        );
+      }
+      // Clean the error params out of the address bar so a refresh doesn't
+      // re-trigger the same message.
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -238,7 +267,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           )}
           <div>
             <span className="text-xl font-extrabold tracking-tight text-slate-900">
-              {org.name || 'Invoice system'}
+              {org.name || 'BillingFlow'}
             </span>
             <span className="hidden sm:inline-block ml-2 px-2.5 py-0.5 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-200/60 rounded-full">
               Portal Manajemen
@@ -274,7 +303,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           <div className="lg:col-span-6 space-y-6 text-center lg:text-left px-2 sm:px-6">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-100/70 border border-brand-200 text-brand-800 text-xs font-semibold">
               <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-              Sistem Faktur & Keuangan Bisnis Terpadu
+              Sistem Faktur & Keuangan Multi-Tenant
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 leading-tight">
