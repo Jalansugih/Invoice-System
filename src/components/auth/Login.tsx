@@ -86,35 +86,6 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
     }
   }, [isPasswordRecovery]);
 
-  // Google/Supabase OAuth redirects back to this page with `?error=...` (or
-  // sometimes only inside the `#...` hash) whenever the login did NOT
-  // succeed - e.g. the user cancelled the Google consent screen, the
-  // Google Cloud "Authorized redirect URI" doesn't match the Supabase
-  // callback URL, or the Google provider isn't enabled in the Supabase
-  // dashboard. Without this, the app silently drops the user back on the
-  // login screen with a dirty URL and zero feedback, which feels broken.
-  useEffect(() => {
-    const search = new URLSearchParams(window.location.search);
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const oauthError = search.get('error') || hash.get('error');
-    const oauthErrorDescription = search.get('error_description') || hash.get('error_description');
-
-    if (oauthError) {
-      if (oauthError === 'access_denied') {
-        setErrorMsg('Login Google dibatalkan. Silakan coba lagi jika ingin masuk dengan akun Google.');
-      } else {
-        setErrorMsg(
-          `Login Google gagal (${oauthError}). ${
-            oauthErrorDescription ? decodeURIComponent(oauthErrorDescription.replace(/\+/g, ' ')) : 'Periksa konfigurasi provider Google di dashboard Supabase.'
-          }`
-        );
-      }
-      // Clean the error params out of the address bar so a refresh doesn't
-      // re-trigger the same message.
-      window.history.replaceState(null, '', window.location.pathname);
-    }
-  }, []);
-
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

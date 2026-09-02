@@ -105,8 +105,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     url: import.meta.env.VITE_SUPABASE_URL || 'Local / In-Memory Demo',
   });
 
-  // Ensure organization and profile exist in Supabase PostgreSQL
-  const ensureProfile = async (sbUser: User, _fallbackOrgName?: string): Promise<UserProfile> => {
+  // Ensure organization and profile exist in Supabase PostgreSQL.
+  //
+  // Production note: the authoritative read/repair path is the SECURITY DEFINER
+  // RPC. This avoids making login depend on the client's `profiles` SELECT RLS
+  // policy. The RPC only operates on auth.uid(), so the browser cannot choose a
+  // different user, organization, or privileged role.
+  const ensureProfile = async (sbUser: User, fallbackOrgName?: string): Promise<UserProfile> => {
     if (!isSupabaseConfigured) {
       if (!IS_DEV) throw new Error('Supabase belum dikonfigurasi untuk deployment produksi.');
       const meta = sbUser.user_metadata || {};
@@ -120,36 +125,62 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
     }
 
-    // Tenant bootstrap is performed by the database trigger on auth.users.
-    // The browser is deliberately NOT allowed to create/link an organization
-    // or choose a privileged role. This prevents tenant takeover and client-side
-    // privilege escalation.
-    const { data: profile, error } = await supabase
+    const toUserProfile = (profile: any): UserProfile => ({
+      id: profile.id,
+      organizationId: profile.organization_id,
+      name:
+        profile.name ||
+        sbUser.user_metadata?.full_name ||
+        sbUser.user_metadata?.name ||
+        sbUser.email?.split('@')[0] ||
+        'Pengguna',
+      email: profile.email || sbUser.email || '',
+      role: (profile.role as UserRole) || 'owner',
+      avatarUrl: profile.avatar_url || sbUser.user_metadata?.avatar_url,
+    });
+
+    // Always go through the authenticated-user RPC first. It is both a
+    // read and an idempotent repair operation for legacy accounts. This is
+    // deliberately preferable to a client-side SELECT because production RLS
+    // should not be allowed to turn an otherwise valid login into a false
+    // "profile missing" state.
+    const rpcOrgName =
+      fallbackOrgName ||
+      sbUser.user_metadata?.organization_name ||
+      'Perusahaan Baru';
+
+    const { data: rpcProfile, error: rpcError } = await supabase.rpc(
+      'bootstrap_current_user_profile',
+      { p_org_name: rpcOrgName }
+    );
+
+    if (!rpcError && rpcProfile?.id === sbUser.id && rpcProfile.organization_id) {
+      setOrgBootstrapError(null);
+      return toUserProfile(rpcProfile);
+    }
+
+    // Backward-compatible fallback for databases where V10 has not yet been
+    // applied. A normal SELECT can still succeed when the RLS helper/policy is
+    // already configured correctly.
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id, organization_id, name, email, role, avatar_url')
       .eq('id', sbUser.id)
       .maybeSingle();
 
-    if (error) {
-      setOrgBootstrapError('Profil pengguna gagal dibaca dari database. Periksa RLS dan migrasi Supabase.');
-      throw error;
+    if (!profileError && profile?.organization_id) {
+      setOrgBootstrapError(null);
+      return toUserProfile(profile);
     }
 
-    if (!profile?.organization_id) {
-      const err = new Error('Profil organisasi belum terbentuk. Jalankan migrasi produksi dan coba login kembali.');
-      setOrgBootstrapError(err.message);
-      throw err;
-    }
+    const diagnostic = rpcError?.message || profileError?.message || 'Profil tidak ditemukan';
+    const message =
+      `Profil organisasi belum dapat disiapkan untuk akun ini. ` +
+      `Pastikan migration_v10_production_org_bootstrap.sql sudah dijalankan. ` +
+      `Detail: ${diagnostic}`;
 
-    setOrgBootstrapError(null);
-    return {
-      id: profile.id,
-      organizationId: profile.organization_id,
-      name: profile.name || sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Pengguna',
-      email: profile.email || sbUser.email || '',
-      role: (profile.role as UserRole) || 'owner',
-      avatarUrl: profile.avatar_url || sbUser.user_metadata?.avatar_url,
-    };
+    setOrgBootstrapError(message);
+    throw new Error(message);
   };
 
   // Helper to map Supabase User metadata to app UserProfile
