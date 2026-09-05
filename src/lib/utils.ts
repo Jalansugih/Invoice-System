@@ -241,3 +241,100 @@ export function parseCSV(text: string): Record<string, string>[] {
     return obj;
   });
 }
+
+/**
+ * Mencetak hanya elemen dokumen yang dipilih.
+ * Menggunakan print window terisolasi agar sidebar, navbar, filter, modal,
+ * dan komponen lain di layar tidak ikut tercetak.
+ */
+export function printElement(elementId: string, title = 'Dokumen'): void {
+  const source = document.getElementById(elementId);
+  if (!source) {
+    console.error(`[printElement] Elemen #${elementId} tidak ditemukan.`);
+    return;
+  }
+
+  const printWindow = window.open('', '_blank', 'width=1024,height=768');
+  if (!printWindow) {
+    alert('Popup cetak diblokir browser. Izinkan pop-up untuk mencetak dokumen.');
+    return;
+  }
+
+  const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    .map((node) => node.outerHTML)
+    .join('\n');
+
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('[data-print-hide], .print\\:hidden, .no-print').forEach((el) => el.remove());
+
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${title.replace(/[<>]/g, '')}</title>
+${styles}
+<style>
+  @page { size: A4 portrait; margin: 10mm 12mm; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  body { color: #0f172a; font-size: 11pt; line-height: 1.4; }
+  #__print_document__ { display: block !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; background: #fff !important; box-shadow: none !important; border: 0 !important; }
+  #__print_document__ * { visibility: visible !important; }
+  button, input, select, textarea, .print\\:hidden, .no-print, [data-print-hide] { display: none !important; }
+  table { width: 100%; border-collapse: collapse; }
+  tr, td, th, .avoid-page-break { break-inside: avoid; page-break-inside: avoid; }
+  * { box-shadow: none !important; text-shadow: none !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+</style>
+</head>
+<body>
+<div id="__print_document__">${clone.outerHTML}</div>
+<script>
+  window.addEventListener('load', function () {
+    setTimeout(function () { window.focus(); window.print(); }, 250);
+  });
+</script>
+</body>
+</html>`);
+  printWindow.document.close();
+  printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
+}
+
+/**
+ * Excel-compatible export without exposing database data to a third party.
+ * Uses SpreadsheetML/HTML-compatible .xls so the report opens directly in
+ * Microsoft Excel/LibreOffice without adding a heavy client dependency.
+ */
+export function exportToExcel(filename: string, rows: Record<string, any>[]) {
+  if (!rows.length) return;
+  const headers = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
+  const esc = (value: any) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const tableRows = rows.map(row =>
+    `<tr>${headers.map(h => `<td>${esc(row[h])}</td>`).join('')}</tr>`
+  ).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:11pt}
+    th,td{border:1px solid #d1d5db;padding:6px 8px}
+    th{font-weight:700;background:#f3f4f6}
+  </style></head><body><table>
+    <thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${tableRows}</tbody>
+  </table></body></html>`;
+
+  const blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename.endsWith('.xls') ? filename : `${filename}.xls`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

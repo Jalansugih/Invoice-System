@@ -7,7 +7,7 @@ import {
   NotesToFinancialStatementsData,
   FinancialAccountBreakdown,
 } from '../../types/tax';
-import { formatRupiah, exportToCSV } from '../../lib/utils';
+import { formatRupiah, exportToCSV, printElement } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import {
@@ -132,7 +132,7 @@ export const TaxFinancialStatementsView: React.FC<TaxFinancialStatementsViewProp
   };
 
   const handlePrint = () => {
-    window.print();
+    printElement('printable-tax-statement', 'Laporan Keuangan');
   };
 
   const handleExportStatementCSV = () => {
@@ -184,7 +184,7 @@ export const TaxFinancialStatementsView: React.FC<TaxFinancialStatementsViewProp
   };
 
   return (
-    <div className="space-y-6">
+    <div id="printable-tax-statement" className="space-y-6">
       {/* Top Controller Header */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

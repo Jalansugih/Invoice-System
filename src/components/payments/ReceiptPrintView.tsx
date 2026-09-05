@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Payment } from '../../types';
 import { StorageService } from '../../lib/storage';
-import { formatRupiah, formatIndoDate, terbilang } from '../../lib/utils';
+import { formatRupiah, formatIndoDate, terbilang, printElement } from '../../lib/utils';
 import { exportElementToPdf } from '../../lib/pdfExport';
 import { Button } from '../ui/Button';
 import { Printer, ArrowLeft, CheckCircle2, Download, Loader2 } from 'lucide-react';
@@ -18,7 +18,7 @@ export const ReceiptPrintView: React.FC<ReceiptPrintViewProps> = ({ payment, onB
   const bank = org.bankAccounts.find((b) => b.id === payment.bankAccountId) || org.bankAccounts[0];
 
   const handlePrint = () => {
-    window.print();
+    printElement('printable-receipt', `Kuitansi ${payment.receiptNumber || payment.id}`);
   };
 
   const handleExportPdf = async () => {

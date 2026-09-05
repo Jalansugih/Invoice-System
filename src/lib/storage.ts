@@ -55,6 +55,9 @@ const STORAGE_KEYS = {
   USER: 'billingflow_user',
   CUSTOMERS: 'billingflow_customers',
   PRODUCTS: 'billingflow_products',
+  INVENTORY_MOVEMENTS: 'billingflow_inventory_movements',
+  VENDORS: 'billingflow_vendors',
+  PURCHASES: 'billingflow_purchases',
   INVOICES: 'billingflow_invoices',
   PAYMENTS: 'billingflow_payments',
   BILLING_LETTERS: 'billingflow_billing_letters',
@@ -1039,6 +1042,12 @@ export class StorageService {
         const org = this.getOrganization();
         if (org.id === f.id) this.syncOrganizationToSupabase(org);
         else this.clearSyncFailure(f.table, f.id);
+      } else if (f.table === 'vendors') {
+        const vendor = this.getVendors().find((v:any) => v.id === f.id);
+        if (vendor) {
+          const orgId = this.getSyncOrgId();
+          if (orgId) this.trackedSync('vendors', vendor.id, vendor.name, () => SupabaseService.saveVendor(vendor, orgId));
+        } else this.clearSyncFailure(f.table, f.id);
       }
     }
   }
@@ -1483,7 +1492,7 @@ export class StorageService {
       const orgId = organizationId || this.getSyncOrgId();
       if (!orgId) return false;
 
-      const [customers, invoices, payments, products, billingLetters, documents, businessDocuments, auditLogs, organization] = await Promise.all([
+      const [customers, invoices, payments, products, billingLetters, documents, businessDocuments, auditLogs, organization, vendors, purchases] = await Promise.all([
         SupabaseService.fetchCustomers(orgId),
         SupabaseService.fetchInvoices(orgId),
         SupabaseService.fetchPayments(orgId),
@@ -1493,6 +1502,8 @@ export class StorageService {
         SupabaseService.fetchBusinessDocuments(orgId),
         SupabaseService.fetchAuditLogs(orgId),
         SupabaseService.getOrganization(orgId),
+        SupabaseService.fetchVendors(orgId),
+        SupabaseService.fetchPurchases(orgId),
       ]);
 
       localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
@@ -1504,6 +1515,8 @@ export class StorageService {
       // fetch swallowed an error internally, so we only trust it once
       // connection+auth are confirmed above.
       localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+      if (vendors !== null) localStorage.setItem(STORAGE_KEYS.VENDORS, JSON.stringify(vendors));
+      if (purchases !== null) localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases));
       localStorage.setItem(STORAGE_KEYS.BILLING_LETTERS, JSON.stringify(billingLetters));
       localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(documents));
       localStorage.setItem(STORAGE_KEYS.BUSINESS_DOCUMENTS, JSON.stringify(businessDocuments));
@@ -1702,6 +1715,114 @@ export class StorageService {
     this.addAuditLog('delete', 'products', id, target.name, `Menghapus master produk: ${target.name}`);
     this.syncProductDeleteToSupabase(id);
     return true;
+  }
+
+  public static async adjustProductStock(productId: string, delta: number, note: string): Promise<Product> {
+    const products = this.getProducts();
+    const idx = products.findIndex(p => p.id === productId);
+    if (idx < 0) throw new Error('Produk tidak ditemukan.');
+    const current = products[idx];
+    if (!current.trackInventory) throw new Error('Produk ini tidak menggunakan pelacakan persediaan.');
+    if (!delta || !Number.isFinite(delta)) throw new Error('Perubahan stok tidak valid.');
+    const next = (current.stockQty ?? 0) + delta;
+    if (next < 0) throw new Error('Stok tidak boleh negatif.');
+
+    // Cloud is authoritative when the authenticated Supabase path is available.
+    const orgId = this.getSyncOrgId();
+    if (orgId) {
+      const ok = await SupabaseService.adjustProductStock(productId, delta, note);
+      if (ok) {
+        const updated = { ...current, stockQty: next };
+        products[idx] = updated;
+        this.setItem(STORAGE_KEYS.PRODUCTS, products);
+        this.addAuditLog('update', 'products', productId, current.name, `Penyesuaian stok ${delta > 0 ? '+' : ''}${delta} ${current.unit}. ${note}`);
+        return updated;
+      }
+    }
+
+    const updated = { ...current, stockQty: next };
+    products[idx] = updated;
+    this.setItem(STORAGE_KEYS.PRODUCTS, products);
+    this.addAuditLog('update', 'products', productId, current.name, `Penyesuaian stok lokal ${delta > 0 ? '+' : ''}${delta} ${current.unit}. ${note}`);
+    this.syncProductToSupabase(updated);
+    return updated;
+  }
+
+  private static applyLocalInvoiceInventory(invoice: Invoice): void {
+    if (invoice.status === 'draft') return;
+    const products = this.getProducts();
+    const movements = this.getItem<any[]>(STORAGE_KEYS.INVENTORY_MOVEMENTS, []);
+    const existing = movements.filter((m) => m.referenceType === 'invoice' && m.referenceId === invoice.id && m.movementType === 'SALE');
+    const byProduct = new Map<string, number>();
+    existing.forEach((m) => byProduct.set(m.productId, (byProduct.get(m.productId) || 0) + Number(m.quantity || 0)));
+
+    // Reverse the previous local sale first; then post the current item set.
+    if (existing.length) {
+      existing.forEach((m) => {
+        const product = products.find((p) => p.id === m.productId);
+        if (product) product.stockQty = Number(product.stockQty || 0) - Number(m.quantity || 0);
+      });
+      const kept = movements.filter((m) => !(m.referenceType === 'invoice' && m.referenceId === invoice.id && m.movementType === 'SALE'));
+      movements.splice(0, movements.length, ...kept);
+    }
+    if (invoice.status === 'cancelled') {
+      this.setItem(STORAGE_KEYS.PRODUCTS, products);
+      this.setItem(STORAGE_KEYS.INVENTORY_MOVEMENTS, movements);
+      return;
+    }
+
+    const date = invoice.issueDate;
+    for (const item of invoice.items || []) {
+      if (!item.productId || !item.quantity) continue;
+      const product = products.find((p) => p.id === item.productId);
+      if (!product?.trackInventory) continue;
+      const qty = Number(item.quantity);
+      const stock = Number(product.stockQty || 0);
+      if (stock < qty) throw new Error(`Stok tidak cukup untuk ${product.name} (tersedia ${stock}, diminta ${qty}).`);
+      const unitCost = Number(product.costPrice || 0);
+      product.stockQty = stock - qty;
+      movements.push({
+        id: generateId(), productId: product.id, movementDate: date, movementType: 'SALE',
+        quantity: -qty, unitCost, referenceType: 'invoice', referenceId: invoice.id,
+        notes: `Penjualan melalui invoice ${invoice.invoiceNumber}`, createdAt: new Date().toISOString(),
+      });
+    }
+    this.setItem(STORAGE_KEYS.PRODUCTS, products);
+    this.setItem(STORAGE_KEYS.INVENTORY_MOVEMENTS, movements);
+  }
+
+  public static getInventoryMovements(): any[] {
+    return this.getItem<any[]>(STORAGE_KEYS.INVENTORY_MOVEMENTS, []);
+  }
+
+  public static async recordInventoryReceipt(data: { productId: string; quantity: number; unitCost: number; movementType: 'OPENING'|'PURCHASE'|'RETURN_IN'|'ADJUSTMENT_IN'; movementDate?: string; notes?: string }): Promise<Product> {
+    if (data.quantity <= 0) throw new Error('Jumlah stok masuk harus lebih dari 0.');
+    if (data.unitCost < 0) throw new Error('Harga pokok tidak boleh negatif.');
+    const products = this.getProducts();
+    const idx = products.findIndex(p => p.id === data.productId);
+    if (idx < 0) throw new Error('Produk tidak ditemukan.');
+    const current = products[idx];
+    if (!current.trackInventory) throw new Error('Produk ini tidak menggunakan pelacakan persediaan.');
+    const date = data.movementDate || new Date().toISOString().slice(0,10);
+    const orgId = this.getSyncOrgId();
+    if (orgId) {
+      const result = await SupabaseService.recordInventoryReceipt(data.productId, data.quantity, data.unitCost, data.movementType, date, 'inventory_receipt', undefined, data.notes);
+      if (result) {
+        const updated = { ...current, stockQty: Number(result.stock_qty ?? ((current.stockQty || 0) + data.quantity)), costPrice: Number(result.cost_price ?? current.costPrice ?? data.unitCost) };
+        products[idx] = updated; this.setItem(STORAGE_KEYS.PRODUCTS, products);
+        this.addAuditLog('update','products',current.id,current.name,`Stok masuk +${data.quantity} ${current.unit}. HPP rata-rata ${updated.costPrice}.`);
+        return updated;
+      }
+    }
+    const oldQty = Number(current.stockQty || 0), oldCost = Number(current.costPrice || 0);
+    const newQty = oldQty + data.quantity;
+    const newCost = oldQty <= 0 ? data.unitCost : Math.round(((oldQty*oldCost)+(data.quantity*data.unitCost))/newQty*100)/100;
+    const movements = this.getInventoryMovements();
+    movements.push({ id: generateId(), productId: current.id, movementDate: date, movementType: data.movementType, quantity: data.quantity, unitCost: data.unitCost, referenceType:'inventory_receipt', notes:data.notes || '', createdAt:new Date().toISOString() });
+    const updated = { ...current, stockQty:newQty, costPrice:newCost };
+    products[idx]=updated; this.setItem(STORAGE_KEYS.PRODUCTS,products); this.setItem(STORAGE_KEYS.INVENTORY_MOVEMENTS,movements);
+    this.addAuditLog('update','products',current.id,current.name,`Stok masuk lokal +${data.quantity} ${current.unit}.`);
+    return updated;
   }
 
   // Sequences
@@ -1907,6 +2028,7 @@ export class StorageService {
 
     this.setItem(STORAGE_KEYS.INVOICES, invoices);
     this.recalculateCustomerBalances();
+    if (invoice.status !== 'draft') this.applyLocalInvoiceInventory(invoice);
     this.syncInvoiceToSupabase(invoice);
     return invoice;
   }
@@ -1928,6 +2050,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.INVOICES, invoices);
     this.addAuditLog('status_change', 'invoices', id, inv.invoiceNumber, `Mengubah status invoice ${inv.invoiceNumber} dari ${oldStatus} ke ${status}`);
     this.recalculateCustomerBalances();
+    if (status !== 'draft') this.applyLocalInvoiceInventory(inv);
     this.syncInvoiceToSupabase(inv);
     return inv;
   }
@@ -3273,4 +3396,63 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.BANK_TRANSACTIONS, initialBankTransactions);
     this.recalculateCustomerBalances();
   }
+  // Phase 2C/2D: Vendor & Purchasing. Cloud mode uses one PostgreSQL transaction for
+  // Purchase -> Inventory -> HPP average -> AP -> Journal. Local mode uses snapshots
+  // so a failed line never leaves half-posted stock.
+  public static getVendors(): any[] { return this.getItem<any[]>(STORAGE_KEYS.VENDORS, []); }
+  public static async saveVendor(data:any): Promise<any> {
+    const all=this.getVendors(); const now=new Date().toISOString(); let v;
+    if(data.id){const i=all.findIndex((x:any)=>x.id===data.id); if(i<0) throw new Error('Vendor tidak ditemukan.'); v={...all[i],...data}; all[i]=v;}
+    else{v={...data,id:generateId(),code:data.code||`VND-${String(all.length+1).padStart(4,'0')}`,isActive:data.isActive!==false,createdAt:now};all.unshift(v);}
+    this.setItem(STORAGE_KEYS.VENDORS,all); this.addAuditLog(data.id?'update':'create','vendors',v.id,v.name,'Menyimpan vendor');
+    const orgId=this.getSyncOrgId();
+    if(orgId && isValidUUID(v.id)) this.trackedSync('vendors',v.id,v.name,()=>SupabaseService.saveVendor(v,orgId));
+    return v;
+  }
+  public static getPurchases(): any[] { return this.getItem<any[]>(STORAGE_KEYS.PURCHASES, []); }
+  public static async receivePurchase(data:any): Promise<any> {
+    if(!data.vendorName?.trim()) throw new Error('Vendor wajib dipilih atau diisi.');
+    if(!Array.isArray(data.items)||!data.items.length) throw new Error('Minimal satu barang pembelian.');
+    if(data.items.some((i:any)=>!i.productId || Number(i.quantity)<=0 || Number(i.unitCost)<0)) throw new Error('Rincian produk, qty, dan harga pokok harus valid.');
+    const purchases=this.getPurchases();
+    const purchaseNumber=data.purchaseNumber||`PUR-${new Date().getFullYear()}-${String(purchases.length+1).padStart(4,'0')}`;
+    const orgId=this.getSyncOrgId();
+    if(orgId){
+      const cloud=await SupabaseService.recordPurchaseAtomic({purchaseNumber,vendorId:(data.vendorId && isValidUUID(data.vendorId)) ? data.vendorId : undefined,vendorName:data.vendorName,purchaseDate:data.purchaseDate,dueDate:data.dueDate,notes:data.notes,items:data.items});
+      if(cloud){
+        const result=cloud.already_exists ? purchases.find((p:any)=>p.id===cloud.id) || cloud : {...data,id:cloud.id,purchaseNumber:cloud.purchase_number||purchaseNumber,status:'RECEIVED',paymentStatus:'UNPAID',paidAmount:0,totalAmount:Number(cloud.total_amount||data.totalAmount||0),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+        if(!result.items) result.items=data.items;
+        const idx=purchases.findIndex((p:any)=>p.id===result.id); if(idx>=0)purchases[idx]=result; else purchases.unshift(result);
+        this.setItem(STORAGE_KEYS.PURCHASES,purchases); this.addAuditLog('create','purchases',result.id,result.purchaseNumber,`Penerimaan atomic dari ${result.vendorName}`); return result;
+      }
+    }
+    // Local/demo fallback: transaction-like snapshot/rollback.
+    const productsBefore=JSON.stringify(this.getProducts());
+    const movementsBefore=JSON.stringify(this.getInventoryMovements());
+    const now=new Date().toISOString();
+    const purchase={...data,id:data.id||generateId(),purchaseNumber,status:'RECEIVED',paymentStatus:'UNPAID',paidAmount:0,totalAmount:data.items.reduce((a:any,i:any)=>a+Number(i.quantity)*Number(i.unitCost),0),createdAt:data.createdAt||now,updatedAt:now};
+    try{
+      for(const item of purchase.items){ await this.recordInventoryReceipt({productId:item.productId,quantity:Number(item.quantity),unitCost:Number(item.unitCost),movementType:'PURCHASE',movementDate:purchase.purchaseDate,notes:`Pembelian ${purchase.purchaseNumber} dari ${purchase.vendorName}`}); }
+      const existing=purchases.findIndex((x:any)=>x.id===purchase.id); if(existing>=0)purchases[existing]=purchase; else purchases.unshift(purchase);
+      this.setItem(STORAGE_KEYS.PURCHASES,purchases); this.addAuditLog('create','purchases',purchase.id,purchase.purchaseNumber,`Penerimaan pembelian dari ${purchase.vendorName}`); return purchase;
+    }catch(e){
+      this.setItem(STORAGE_KEYS.PRODUCTS,JSON.parse(productsBefore)); this.setItem(STORAGE_KEYS.INVENTORY_MOVEMENTS,JSON.parse(movementsBefore)); throw e;
+    }
+  }
+
+  public static async payPurchase(purchaseId:string, amount:number, paymentAccountId:string, paymentDate:string, referenceNumber?:string, notes?:string, idempotencyKey?:string):Promise<any>{
+    if(amount<=0) throw new Error('Nominal pembayaran harus lebih dari 0.');
+    if(!paymentAccountId) throw new Error('Akun kas/bank wajib dipilih.');
+    if(!paymentDate) throw new Error('Tanggal pembayaran wajib diisi.');
+    const purchase=this.getPurchases().find((p:any)=>p.id===purchaseId);
+    if(!purchase) throw new Error('Pembelian tidak ditemukan.');
+    const remaining=Math.max(0,Number(purchase.totalAmount||0)-Number(purchase.paidAmount||0));
+    if(amount>remaining+0.004) throw new Error('Nominal pembayaran melebihi sisa hutang.');
+    const orgId=this.getSyncOrgId();
+    if(orgId){ const cloud=await SupabaseService.recordPurchasePaymentAtomic({purchaseId,amount,paymentDate,paymentAccountId,referenceNumber,notes,idempotencyKey}); if(cloud){
+      const purchases=this.getPurchases(); const i=purchases.findIndex((p:any)=>p.id===purchaseId); if(i>=0){purchases[i]={...purchases[i],paidAmount:Number(cloud.paid_amount),paymentStatus:cloud.payment_status,updatedAt:new Date().toISOString()}; this.setItem(STORAGE_KEYS.PURCHASES,purchases);} return cloud;
+    }}
+    throw new Error('Pembayaran pembelian membutuhkan Supabase agar hutang dan jurnal tetap atomic.');
+  }
+
 }

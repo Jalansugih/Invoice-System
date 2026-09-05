@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Invoice } from '../../types';
 import { StorageService } from '../../lib/storage';
-import { formatRupiah, formatIndoDate, terbilang } from '../../lib/utils';
+import { formatRupiah, formatIndoDate, terbilang, printElement } from '../../lib/utils';
 import { exportElementToPdf } from '../../lib/pdfExport';
 import { Button } from '../ui/Button';
 import { Printer, Download, ArrowLeft, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react';
@@ -17,7 +17,7 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
   const bank = org.bankAccounts.find((b) => b.id === invoice.bankAccountId) || org.bankAccounts[0];
 
   const handlePrint = () => {
-    window.print();
+    printElement('printable-invoice', `Invoice ${invoice.invoiceNumber}`);
   };
 
   const handleExportPdf = async () => {

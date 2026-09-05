@@ -282,7 +282,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
             </h1>
 
             <p className="text-slate-600 text-base sm:text-lg leading-relaxed max-w-xl mx-auto lg:mx-0">
-              Selamat datang di <strong>{org.name || 'BillingFlow Enterprise'}</strong>. Akses dasbor faktur, surat tagihan, pajak DJP, dan rekonsiliasi bank dalam satu tempat terpadu.
+              Selamat datang di <strong>{org.name || 'BillingFlow Enterprise'}</strong>. Akses dasbor faktur, surat tagihan, pembayaran, accounting, dan laporan keuangan dalam satu tempat terpadu.
             </p>
 
             {/* Fitur Unggulan */}

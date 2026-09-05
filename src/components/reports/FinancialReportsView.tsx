@@ -1,422 +1,245 @@
-import React, { useState, useMemo } from 'react';
-import { StorageService } from '../../lib/storage';
-import { formatRupiah, formatIndoDate, exportToCSV } from '../../lib/utils';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BarChart3, CheckCircle2, Download, FileDown, FileWarning, Landmark, Printer, RefreshCw, WalletCards } from 'lucide-react';
+import { AccountingService, AccountingLine, FinancialStatements } from '../../lib/accountingService';
+import { useAuth } from '../auth/Auth';
 import { Button } from '../ui/Button';
-import {
-  BarChart3,
-  Download,
-  Printer,
-  DollarSign,
-  TrendingUp,
-  Hourglass,
-  Receipt,
-} from 'lucide-react';
+import { Input } from '../ui/Input';
+import { exportToCSV, exportToExcel, formatIndoDate, formatRupiah, printElement } from '../../lib/utils';
+
+type ReportTab = 'profitLoss' | 'balanceSheet' | 'cashFlow' | 'receivables' | 'payables';
+
+const money = (value: number) => formatRupiah(Number(value) || 0);
+const monthStart = () => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+};
+const today = () => new Date().toISOString().slice(0, 10);
+
+const LineTable: React.FC<{ lines: AccountingLine[]; totalLabel: string; total: number }> = ({ lines, totalLabel, total }) => (
+  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+          <tr><th className="px-5 py-3 text-left">Kode</th><th className="px-5 py-3 text-left">Akun</th><th className="px-5 py-3 text-right">Saldo</th></tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {lines.length === 0 ? (
+            <tr><td colSpan={3} className="px-5 py-10 text-center text-slate-400">Belum ada jurnal pada periode ini.</td></tr>
+          ) : lines.map(line => (
+            <tr key={line.code} className="hover:bg-slate-50">
+              <td className="px-5 py-3 font-mono text-xs text-slate-500">{line.code}</td>
+              <td className="px-5 py-3 font-medium text-slate-800">{line.name}</td>
+              <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums">{money(line.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="bg-slate-50 border-t border-slate-200">
+          <tr><td colSpan={2} className="px-5 py-3 font-bold text-slate-800">{totalLabel}</td><td className="px-5 py-3 text-right font-mono font-bold tabular-nums">{money(total)}</td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+);
 
 export const FinancialReportsView: React.FC = () => {
-  const [activeReport, setActiveReport] = useState<'revenue' | 'aging' | 'cashflow' | 'tax'>('revenue');
+  const { user } = useAuth();
+  const [activeReport, setActiveReport] = useState<ReportTab>('profitLoss');
+  const [startDate, setStartDate] = useState(monthStart());
+  const [endDate, setEndDate] = useState(today());
+  const [data, setData] = useState<FinancialStatements | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const invoices = StorageService.getInvoices();
-  const payments = StorageService.getPayments();
-  const customers = StorageService.getCustomers();
-  const org = StorageService.getOrganization();
+  const load = async () => {
+    setLoading(true); setError('');
+    try {
+      if (endDate < startDate) throw new Error('Tanggal akhir tidak boleh sebelum tanggal mulai.');
+      setData(await AccountingService.getFinancialStatements(startDate, endDate, user?.organizationId));
+    } catch (e: any) {
+      setError(e?.message || 'Laporan akuntansi gagal dimuat.');
+    } finally { setLoading(false); }
+  };
 
-  // 1. Revenue report data
-  const revenueSummary = useMemo(() => {
-    const totalInvoiced = invoices.reduce((sum, i) => sum + i.grandTotal, 0);
-    const totalSubtotal = invoices.reduce((sum, i) => sum + i.subtotal, 0);
-    const totalDiscount = invoices.reduce((sum, i) => sum + i.discountAmount, 0);
-    const totalTax = invoices.reduce((sum, i) => sum + i.taxAmount, 0);
-    const totalPaid = invoices.reduce((sum, i) => sum + i.paidAmount, 0);
-    const totalOutstanding = invoices.reduce((sum, i) => sum + i.outstandingAmount, 0);
+  useEffect(() => { load(); }, [user?.organizationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return {
-      totalInvoiced,
-      totalSubtotal,
-      totalDiscount,
-      totalTax,
-      totalPaid,
-      totalOutstanding,
-      count: invoices.length,
-    };
-  }, [invoices]);
+  const integrityOk = data
+    ? data.integrity.unbalancedJournals === 0 &&
+      data.integrity.unjournalizedInvoices === 0 &&
+      data.integrity.unjournalizedPayments === 0 &&
+      data.integrity.unmappedBankPayments === 0
+    : true;
 
-  // 2. Aging Piutang by Customer
-  const customerAgingData = useMemo(() => {
-    return customers
-      .filter((c) => c.totalOutstanding > 0)
-      .map((c) => {
-        const custInvoices = invoices.filter((i) => i.customerId === c.id && i.outstandingAmount > 0);
-        const today = new Date();
+  const tabs: Array<{ id: ReportTab; label: string; icon: React.ElementType }> = [
+    { id: 'profitLoss', label: 'Laba Rugi', icon: BarChart3 },
+    { id: 'balanceSheet', label: 'Neraca', icon: Landmark },
+    { id: 'cashFlow', label: 'Arus Kas', icon: WalletCards },
+    { id: 'receivables', label: 'Piutang', icon: RefreshCw },
+    { id: 'payables', label: 'Hutang', icon: RefreshCw },
+  ];
 
-        let current = 0;
-        let d1_30 = 0;
-        let d31_60 = 0;
-        let d61_90 = 0;
-        let dOver90 = 0;
+  const exportCurrent = () => {
+    if (!data) return;
+    const rows: Record<string, any>[] = [];
+    if (activeReport === 'profitLoss') {
+      [...data.profitLoss.revenue, ...data.profitLoss.cogs, ...data.profitLoss.expenses].forEach(x => rows.push({ 'Kode Akun': x.code, 'Nama Akun': x.name, 'Jenis': x.accountType, 'Saldo': x.amount }));
+      rows.push({ 'Kode Akun': '', 'Nama Akun': 'LABA BERSIH', 'Jenis': '', 'Saldo': data.profitLoss.netProfit });
+    } else if (activeReport === 'balanceSheet') {
+      [...data.balanceSheet.assets, ...data.balanceSheet.liabilities, ...data.balanceSheet.equity].forEach(x => rows.push({ 'Kode Akun': x.code, 'Nama Akun': x.name, 'Jenis': x.accountType, 'Saldo': x.amount }));
+      rows.push({ 'Kode Akun': '', 'Nama Akun': 'TOTAL ASET', 'Jenis': '', 'Saldo': data.balanceSheet.totalAssets });
+      rows.push({ 'Kode Akun': '', 'Nama Akun': 'TOTAL LIABILITAS + EKUITAS', 'Jenis': '', 'Saldo': data.balanceSheet.totalLiabilities + data.balanceSheet.totalEquity });
+    } else if (activeReport === 'cashFlow') {
+      rows.push({ 'Keterangan': 'Saldo awal kas/bank', 'Nominal': data.cashFlow.openingCash });
+      rows.push({ 'Keterangan': 'Kas masuk', 'Nominal': data.cashFlow.inflows });
+      rows.push({ 'Keterangan': 'Kas keluar', 'Nominal': data.cashFlow.outflows });
+      rows.push({ 'Keterangan': 'Arus kas bersih', 'Nominal': data.cashFlow.netCashFlow });
+      rows.push({ 'Keterangan': 'Saldo akhir kas/bank', 'Nominal': data.cashFlow.closingCash });
+    } else if (activeReport === 'receivables') {
+      rows.push({ 'Keterangan': 'Saldo Piutang Usaha', 'Nominal': data.receivables.balance });
+    } else {
+      rows.push({ 'Keterangan': 'Saldo Hutang Usaha', 'Nominal': data.payables.balance });
+    }
+    exportToCSV(`Laporan_Akuntansi_${activeReport}_${endDate}`, rows);
+  };
 
-        custInvoices.forEach((inv) => {
-          const due = new Date(inv.dueDate);
-          const diffDays = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+  const exportExcel = () => {
+    if (!data) return;
+    const rows: Record<string, any>[] = [];
+    if (activeReport === 'profitLoss') {
+      [...data.profitLoss.revenue, ...data.profitLoss.cogs, ...data.profitLoss.expenses].forEach(x => rows.push({ 'Kode Akun': x.code, 'Nama Akun': x.name, 'Jenis': x.accountType, 'Saldo': x.amount }));
+      rows.push({ 'Kode Akun': '', 'Nama Akun': 'LABA BERSIH', 'Jenis': '', 'Saldo': data.profitLoss.netProfit });
+    } else if (activeReport === 'balanceSheet') {
+      [...data.balanceSheet.assets, ...data.balanceSheet.liabilities, ...data.balanceSheet.equity].forEach(x => rows.push({ 'Kode Akun': x.code, 'Nama Akun': x.name, 'Jenis': x.accountType, 'Saldo': x.amount }));
+      rows.push({ 'Kode Akun': '', 'Nama Akun': 'TOTAL ASET', 'Jenis': '', 'Saldo': data.balanceSheet.totalAssets });
+      rows.push({ 'Kode Akun': '', 'Nama Akun': 'TOTAL LIABILITAS + EKUITAS', 'Jenis': '', 'Saldo': data.balanceSheet.totalLiabilities + data.balanceSheet.totalEquity });
+    } else if (activeReport === 'cashFlow') {
+      rows.push({ 'Keterangan': 'Saldo awal kas/bank', 'Nominal': data.cashFlow.openingCash }, { 'Keterangan': 'Kas masuk', 'Nominal': data.cashFlow.inflows }, { 'Keterangan': 'Kas keluar', 'Nominal': data.cashFlow.outflows }, { 'Keterangan': 'Arus kas bersih', 'Nominal': data.cashFlow.netCashFlow }, { 'Keterangan': 'Saldo akhir kas/bank', 'Nominal': data.cashFlow.closingCash });
+    } else if (activeReport === 'receivables') {
+      rows.push({ 'Keterangan': 'Saldo Piutang Usaha', 'Nominal': data.receivables.balance });
+    } else {
+      rows.push({ 'Keterangan': 'Saldo Hutang Usaha', 'Nominal': data.payables.balance });
+    }
+    exportToExcel(`Laporan_Keuangan_${activeReport}_${endDate}`, rows);
+  };
 
-          if (diffDays <= 0) current += inv.outstandingAmount;
-          else if (diffDays <= 30) d1_30 += inv.outstandingAmount;
-          else if (diffDays <= 60) d31_60 += inv.outstandingAmount;
-          else if (diffDays <= 90) d61_90 += inv.outstandingAmount;
-          else dOver90 += inv.outstandingAmount;
-        });
-
-        return {
-          id: c.id,
-          name: c.name,
-          companyName: c.companyName,
-          totalOutstanding: c.totalOutstanding,
-          current,
-          d1_30,
-          d31_60,
-          d61_90,
-          dOver90,
-          invoiceCount: custInvoices.length,
-        };
+  const exportPdf = async () => {
+    try {
+      const { exportElementToPdf } = await import('../../lib/pdfExport');
+      await exportElementToPdf({
+        elementId: 'printable-report',
+        filename: `Laporan_Keuangan_${activeReport}_${endDate}.pdf`,
+        marginMm: 10,
+        addPageNumbers: true,
       });
-  }, [customers, invoices]);
-
-  // 3. Tax / PPN Recap
-  const taxSummary = useMemo(() => {
-    return invoices.map((inv) => {
-      const cust = customers.find((c) => c.id === inv.customerId);
-      return {
-        noInvoice: inv.invoiceNumber,
-        tanggal: inv.issueDate,
-        pelanggan: inv.customerName,
-        npwp: cust?.npwp || '-',
-        dpp: inv.subtotal - inv.discountAmount,
-        tarifPpn: `${inv.taxRate}%`,
-        ppn: inv.taxAmount,
-        total: inv.grandTotal,
-      };
-    });
-  }, [invoices, customers]);
-
-  const totalDpp = taxSummary.reduce((sum, t) => sum + t.dpp, 0);
-  const totalPpn = taxSummary.reduce((sum, t) => sum + t.ppn, 0);
-
-  const handleExportCurrent = () => {
-    if (activeReport === 'revenue') {
-      const data = invoices.map((i) => ({
-        'No. Faktur': i.invoiceNumber,
-        'Tanggal Terbit': i.issueDate,
-        'Jatuh Tempo': i.dueDate,
-        'Pelanggan': i.customerName,
-        'DPP Subtotal': i.subtotal,
-        'Diskon': i.discountAmount,
-        'PPN': i.taxAmount,
-        'Grand Total': i.grandTotal,
-        'Terbayar': i.paidAmount,
-        'Sisa Piutang': i.outstandingAmount,
-        'Status': i.status,
-      }));
-      exportToCSV(`Laporan_Pendapatan_Faktur_${new Date().toISOString().split('T')[0]}`, data);
-    } else if (activeReport === 'aging') {
-      const data = customerAgingData.map((a) => ({
-        'Nama Pelanggan': a.name,
-        'Perusahaan': a.companyName,
-        'Belum Jatuh Tempo': a.current,
-        '1 - 30 Hari': a.d1_30,
-        '31 - 60 Hari': a.d31_60,
-        '61 - 90 Hari': a.d61_90,
-        '> 90 Hari (Macet)': a.dOver90,
-        'Total Piutang': a.totalOutstanding,
-      }));
-      exportToCSV(`Laporan_Aging_Piutang_${new Date().toISOString().split('T')[0]}`, data);
-    } else if (activeReport === 'cashflow') {
-      const data = payments.map((p) => ({
-        'No. Kuitansi': p.receiptNumber,
-        'Tanggal Terima': p.paymentDate,
-        'No. Invoice': p.invoiceNumber,
-        'Pelanggan': p.customerName,
-        'Metode Pembayaran': p.paymentMethod,
-        'Nominal': p.amount,
-        'No. Referensi': p.referenceNumber || '-',
-      }));
-      exportToCSV(`Laporan_Arus_Kas_Penerimaan_${new Date().toISOString().split('T')[0]}`, data);
-    } else if (activeReport === 'tax') {
-      const data = taxSummary.map((t) => ({
-        'No. Invoice': t.noInvoice,
-        'Tanggal': t.tanggal,
-        'Nama Pembeli': t.pelanggan,
-        'NPWP': t.npwp,
-        'Dasar Pengenaan Pajak (DPP)': t.dpp,
-        'Tarif': t.tarifPpn,
-        'PPN Terutang': t.ppn,
-        'Grand Total': t.total,
-      }));
-      exportToCSV(`Rekapitulasi_PPN_Keluaran_${new Date().toISOString().split('T')[0]}`, data);
+    } catch (e: any) {
+      alert(e?.message || 'Gagal membuat PDF.');
     }
   };
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
-            Financial & Aging Reports
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Official tax recaps, aging schedule analysis, revenue recognition, and cash flow reconciliation
-          </p>
+          <div className="flex items-center gap-2 text-blue-600 text-xs font-bold uppercase tracking-wider"><BarChart3 className="w-4 h-4" /> Akuntansi</div>
+          <h2 className="text-2xl font-bold text-slate-900 mt-1">Laporan Keuangan</h2>
+          <p className="text-sm text-slate-500 mt-1">Semua angka bersumber dari jurnal Posted. Invoice, penerimaan, pengeluaran, dan pembayaran tidak dihitung ulang di halaman laporan.</p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCurrent}
-            leftIcon={<Download className="w-4 h-4" />}
-          >
-            Export CSV
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.print()}
-            leftIcon={<Printer className="w-4 h-4" />}
-          >
-            Print Report
-          </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportCurrent} disabled={!data || loading}><Download className="w-4 h-4 mr-1" /> CSV</Button>
+          <Button variant="outline" size="sm" onClick={exportExcel} disabled={!data || loading}><FileDown className="w-4 h-4 mr-1" /> Excel</Button>
+          <Button variant="outline" size="sm" onClick={exportPdf} disabled={!data || loading}><FileDown className="w-4 h-4 mr-1" /> PDF</Button>
+          <Button variant="outline" size="sm" onClick={() => printElement('printable-report', `Laporan ${tabs.find(t => t.id === activeReport)?.label || ''}`)}><Printer className="w-4 h-4 mr-1" /> Print</Button>
         </div>
       </div>
 
-      {/* Report Switcher Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1">
-        {[
-          { id: 'revenue', label: 'Revenue & Invoices', icon: TrendingUp },
-          { id: 'aging', label: 'Aging Receivables Schedule', icon: Hourglass },
-          { id: 'cashflow', label: 'Cash Flow Receipts', icon: DollarSign },
-          { id: 'tax', label: 'VAT / PPN Tax Recap', icon: Receipt },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveReport(tab.id as any)}
-              className={`text-xs px-4 py-2.5 font-semibold rounded-t-xl transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                activeReport === tab.id
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          );
-        })}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+          <Input label="Mulai periode" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+          <Input label="Sampai tanggal" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          <Button onClick={load} disabled={loading} className="h-10">{loading ? 'Memuat...' : 'Terapkan Periode'}</Button>
+        </div>
       </div>
 
-      {/* 1. Revenue Report */}
-      {activeReport === 'revenue' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Invoiced</p>
-              <p className="text-xl font-bold text-slate-900 mt-1 tabular-nums">{formatRupiah(revenueSummary.totalInvoiced)}</p>
-              <p className="text-xs text-slate-500 mt-0.5 tabular-nums">{revenueSummary.count} Invoices</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cash Collected</p>
-              <p className="text-xl font-bold text-emerald-600 mt-1 tabular-nums">{formatRupiah(revenueSummary.totalPaid)}</p>
-              <p className="text-xs text-emerald-600 mt-0.5 tabular-nums font-medium">
-                {((revenueSummary.totalPaid / (revenueSummary.totalInvoiced || 1)) * 100).toFixed(1)}% Collection Ratio
-              </p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Outstanding Balance</p>
-              <p className="text-xl font-bold text-amber-600 mt-1 tabular-nums">{formatRupiah(revenueSummary.totalOutstanding)}</p>
-              <p className="text-xs text-slate-500 mt-0.5">Active Receivables</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Output VAT (PPN)</p>
-              <p className="text-xl font-bold text-blue-600 mt-1 tabular-nums">{formatRupiah(revenueSummary.totalTax)}</p>
-              <p className="text-xs text-slate-500 mt-0.5">VAT Obligations</p>
+      {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
+
+      {data && (
+        <div id="printable-report" className="bg-white">
+          <div className="hidden print:block mb-6 border-b-2 border-slate-900 pb-4">
+            <h1 className="text-2xl font-bold text-slate-900">Laporan Keuangan</h1>
+            <p className="text-sm text-slate-600 mt-1">{tabs.find(t => t.id === activeReport)?.label} • Periode {formatIndoDate(startDate)} s.d. {formatIndoDate(endDate)}</p>
+          </div>
+          <div className={`rounded-xl border p-4 ${integrityOk ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+            <div className="flex items-start gap-3">
+              {integrityOk ? <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5" /> : <FileWarning className="w-5 h-5 text-amber-600 mt-0.5" />}
+              <div className="text-sm">
+                <div className="font-semibold text-slate-900">{integrityOk ? 'Ledger sehat' : 'Ada data yang perlu ditindaklanjuti'}</div>
+                <div className="text-xs text-slate-600 mt-1">
+                  {data.integrity.postedJournals} jurnal Posted • Debit {money(data.integrity.debitTotal)} • Kredit {money(data.integrity.creditTotal)}
+                  {!integrityOk && ` • Jurnal tidak balance: ${data.integrity.unbalancedJournals} • Invoice tanpa jurnal: ${data.integrity.unjournalizedInvoices} • Penerimaan tanpa jurnal: ${data.integrity.unjournalizedPayments} • Bank belum dipetakan: ${data.integrity.unmappedBankPayments}`}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Table */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 font-bold text-xs text-slate-800 tracking-tight">
-              Invoice Ledger & Settlement Performance
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="text-[11px] uppercase text-slate-400 font-bold border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-6 py-3 tracking-wider">Invoice No</th>
-                    <th className="px-6 py-3 tracking-wider">Date</th>
-                    <th className="px-6 py-3 tracking-wider">Customer</th>
-                    <th className="px-6 py-3 text-right tracking-wider">DPP Subtotal</th>
-                    <th className="px-6 py-3 text-right tracking-wider">PPN 11%</th>
-                    <th className="px-6 py-3 text-right tracking-wider">Grand Total</th>
-                    <th className="px-6 py-3 text-right tracking-wider">Paid</th>
-                    <th className="px-6 py-3 text-right tracking-wider">Balance Due</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
-                  {invoices.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3.5 font-mono text-xs font-semibold text-blue-600 tabular-nums">{inv.invoiceNumber}</td>
-                      <td className="px-6 py-3.5 text-xs text-slate-600 tabular-nums">{formatIndoDate(inv.issueDate)}</td>
-                      <td className="px-6 py-3.5 text-xs font-medium text-slate-900">{inv.customerName}</td>
-                      <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums text-slate-700">{formatRupiah(inv.subtotal)}</td>
-                      <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums text-slate-600">{formatRupiah(inv.taxAmount)}</td>
-                      <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums font-bold text-slate-900">{formatRupiah(inv.grandTotal)}</td>
-                      <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums text-emerald-600 font-semibold">{formatRupiah(inv.paidAmount)}</td>
-                      <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums font-bold text-amber-600">{formatRupiah(inv.outstandingAmount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Aging Receivables Report */}
-      {activeReport === 'aging' && (
-        <div className="space-y-6">
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 font-bold text-xs text-slate-800 tracking-tight">
-              Customer Aging Schedule Analysis
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="text-[11px] uppercase text-slate-400 font-bold border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-6 py-3 tracking-wider">Customer Entity</th>
-                    <th className="px-6 py-3 text-right tracking-wider">Current (Not Due)</th>
-                    <th className="px-6 py-3 text-right tracking-wider">1 - 30 Days</th>
-                    <th className="px-6 py-3 text-right tracking-wider">31 - 60 Days</th>
-                    <th className="px-6 py-3 text-right tracking-wider">61 - 90 Days</th>
-                    <th className="px-6 py-3 text-right tracking-wider text-rose-600">&gt; 90 Days</th>
-                    <th className="px-6 py-3 text-right tracking-wider font-bold">Total Overdue</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
-                  {customerAgingData.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-10 text-center text-slate-400 text-xs">
-                        No outstanding receivables at this time.
-                      </td>
-                    </tr>
-                  ) : (
-                    customerAgingData.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-3.5">
-                          <p className="font-semibold text-slate-900 text-xs">{c.name}</p>
-                          <p className="text-[10px] text-slate-400">{c.companyName}</p>
-                        </td>
-                        <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums text-slate-600">{formatRupiah(c.current)}</td>
-                        <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums text-slate-700">{formatRupiah(c.d1_30)}</td>
-                        <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums text-amber-600">{formatRupiah(c.d31_60)}</td>
-                        <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums text-orange-600">{formatRupiah(c.d61_90)}</td>
-                        <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums font-bold text-rose-600">{formatRupiah(c.dOver90)}</td>
-                        <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums font-bold text-slate-900">
-                          {formatRupiah(c.totalOutstanding)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. Cash Flow Payments Report */}
-      {activeReport === 'cashflow' && (
-        <div className="space-y-6">
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 font-bold text-xs text-slate-800 tracking-tight">
-              Cash Inflow Ledger & Collections
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="text-[11px] uppercase text-slate-400 font-bold border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-6 py-3 tracking-wider">Receipt No</th>
-                    <th className="px-6 py-3 tracking-wider">Receipt Date</th>
-                    <th className="px-6 py-3 tracking-wider">Invoice No</th>
-                    <th className="px-6 py-3 tracking-wider">Customer</th>
-                    <th className="px-6 py-3 tracking-wider">Method</th>
-                    <th className="px-6 py-3 text-right tracking-wider">Inflow Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
-                  {payments.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3.5 font-mono text-xs font-semibold text-emerald-600 tabular-nums">{p.receiptNumber}</td>
-                      <td className="px-6 py-3.5 text-xs text-slate-700 tabular-nums">{formatIndoDate(p.paymentDate)}</td>
-                      <td className="px-6 py-3.5 font-mono text-xs text-blue-600 tabular-nums">{p.invoiceNumber}</td>
-                      <td className="px-6 py-3.5 text-xs font-medium text-slate-900">{p.customerName}</td>
-                      <td className="px-6 py-3.5 text-xs uppercase text-slate-600 font-medium">{p.paymentMethod.replace('_', ' ')}</td>
-                      <td className="px-6 py-3.5 text-right font-bold font-mono text-xs tabular-nums text-emerald-600">{formatRupiah(p.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4. Tax / PPN Keluaran Report */}
-      {activeReport === 'tax' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Tax Base (DPP)</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">{formatRupiah(totalDpp)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Output VAT 11%</p>
-              <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{formatRupiah(totalPpn)}</p>
-            </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              ['Laba Bersih', data.profitLoss.netProfit, data.profitLoss.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'],
+              ['Kas/Bank Akhir', data.cashFlow.closingCash, 'text-slate-900'],
+              ['Piutang Usaha', data.receivables.balance, 'text-amber-600'],
+              ['Hutang Usaha', data.payables.balance, 'text-rose-600'],
+            ].map(([label, value, cls]) => (
+              <div key={label as string} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
+                <div className={`mt-1 text-lg font-bold tabular-nums ${cls}`}>{money(value as number)}</div>
+              </div>
+            ))}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 font-bold text-xs text-slate-800 tracking-tight">
-              Output VAT (PPN Keluaran) Tax Summary
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="text-[11px] uppercase text-slate-400 font-bold border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-6 py-3 tracking-wider">Invoice No</th>
-                    <th className="px-6 py-3 tracking-wider">Date</th>
-                    <th className="px-6 py-3 tracking-wider">Client Entity</th>
-                    <th className="px-6 py-3 tracking-wider">NPWP</th>
-                    <th className="px-6 py-3 text-right tracking-wider">DPP (Rp)</th>
-                    <th className="px-6 py-3 text-center tracking-wider">Rate</th>
-                    <th className="px-6 py-3 text-right tracking-wider">VAT Due (Rp)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
-                  {taxSummary.map((t, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3.5 font-mono text-xs font-semibold text-blue-600 tabular-nums">{t.noInvoice}</td>
-                      <td className="px-6 py-3.5 text-xs text-slate-600 tabular-nums">{formatIndoDate(t.tanggal)}</td>
-                      <td className="px-6 py-3.5 text-xs font-medium text-slate-900">{t.pelanggan}</td>
-                      <td className="px-6 py-3.5 font-mono text-xs text-slate-600 tabular-nums">{t.npwp}</td>
-                      <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums font-semibold text-slate-900">{formatRupiah(t.dpp)}</td>
-                      <td className="px-6 py-3.5 text-center font-bold text-slate-700 text-xs tabular-nums">{t.tarifPpn}</td>
-                      <td className="px-6 py-3.5 text-right font-mono text-xs tabular-nums font-bold text-blue-600">{formatRupiah(t.ppn)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1">
+            {tabs.map(tab => {
+              const Icon = tab.icon;
+              return <button key={tab.id} onClick={() => setActiveReport(tab.id)} className={`text-xs px-4 py-2.5 font-semibold rounded-t-xl flex items-center gap-2 whitespace-nowrap ${activeReport === tab.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}><Icon className="w-4 h-4" />{tab.label}</button>;
+            })}
           </div>
+
+          {activeReport === 'profitLoss' && (
+            <div className="space-y-5">
+              <LineTable lines={data.profitLoss.revenue} totalLabel="Total Pendapatan" total={data.profitLoss.totalRevenue} />
+              <LineTable lines={data.profitLoss.cogs} totalLabel="Total HPP" total={data.profitLoss.totalCogs} />
+              <LineTable lines={data.profitLoss.expenses} totalLabel="Total Beban Operasional" total={data.profitLoss.totalExpenses} />
+              <div className="rounded-xl border-2 border-slate-900 bg-white p-5 flex justify-between items-center"><span className="font-bold text-slate-900">LABA / (RUGI) BERSIH</span><span className={`text-xl font-bold ${data.profitLoss.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{money(data.profitLoss.netProfit)}</span></div>
+            </div>
+          )}
+
+          {activeReport === 'balanceSheet' && (
+            <div className="space-y-5">
+              <LineTable lines={data.balanceSheet.assets} totalLabel="TOTAL ASET" total={data.balanceSheet.totalAssets} />
+              <LineTable lines={data.balanceSheet.liabilities} totalLabel="TOTAL LIABILITAS" total={data.balanceSheet.totalLiabilities} />
+              <LineTable lines={data.balanceSheet.equity} totalLabel="TOTAL EKUITAS" total={data.balanceSheet.totalEquity} />
+              <div className={`rounded-xl border p-4 flex justify-between ${Math.abs(data.balanceSheet.balanceCheck) < 0.01 ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
+                <span className="font-semibold">Check: Aset − (Liabilitas + Ekuitas)</span><span className="font-mono font-bold">{money(data.balanceSheet.balanceCheck)}</span>
+              </div>
+            </div>
+          )}
+
+          {activeReport === 'cashFlow' && (
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {[
+                ['Saldo awal', data.cashFlow.openingCash],
+                ['Kas masuk', data.cashFlow.inflows],
+                ['Kas keluar', data.cashFlow.outflows],
+                ['Arus kas bersih', data.cashFlow.netCashFlow],
+                ['Saldo akhir', data.cashFlow.closingCash],
+              ].map(([label, value]) => <div key={label as string} className="rounded-xl border border-slate-200 bg-white p-5"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-lg font-bold tabular-nums">{money(value as number)}</div></div>)}
+            </div>
+          )}
+
+          {activeReport === 'receivables' && (
+            <div className="rounded-xl border border-slate-200 bg-white p-6"><div className="text-sm text-slate-500">Saldo Piutang Usaha per {formatIndoDate(endDate)}</div><div className="mt-2 text-3xl font-bold text-amber-600">{money(data.receivables.balance)}</div><p className="text-xs text-slate-500 mt-3">Saldo berasal dari akun 1-2000 pada ledger Posted, bukan dari total_outstanding customer.</p></div>
+          )}
+
+          {activeReport === 'payables' && (
+            <div className="rounded-xl border border-slate-200 bg-white p-6"><div className="text-sm text-slate-500">Saldo Hutang Usaha per {formatIndoDate(endDate)}</div><div className="mt-2 text-3xl font-bold text-rose-600">{money(data.payables.balance)}</div><p className="text-xs text-slate-500 mt-3">Saldo berasal dari akun 2-1000 pada ledger Posted. Pembayaran hutang mengurangi saldo melalui jurnal Dr Hutang → Cr Kas/Bank.</p></div>
+          )}
         </div>
       )}
     </div>

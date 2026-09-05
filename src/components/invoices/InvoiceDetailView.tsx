@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Invoice, Payment, BillingLetter } from '../../types';
 import { StorageService } from '../../lib/storage';
-import { formatRupiah, formatIndoDate, getInvoiceStatusBadge } from '../../lib/utils';
+import { formatRupiah, formatIndoDate, getInvoiceStatusBadge, printElement } from '../../lib/utils';
 import { exportElementToPdf } from '../../lib/pdfExport';
 import { InvoicePrintView } from './InvoicePrintView';
 import { Button } from '../ui/Button';
@@ -164,9 +164,9 @@ export const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({
             onClick={() => {
               if (activeTab !== 'preview') {
                 setActiveTab('preview');
-                setTimeout(() => window.print(), 100);
+                setTimeout(() => printElement('printable-invoice', `Invoice ${invoice.invoiceNumber}`), 100);
               } else {
-                window.print();
+                printElement('printable-invoice', `Invoice ${invoice.invoiceNumber}`);
               }
             }}
             leftIcon={<Printer className="w-4 h-4 text-slate-700" />}

@@ -7,8 +7,6 @@ import {
   FileText,
   CreditCard,
   Mail,
-  Landmark,
-  Receipt,
   ShieldCheck,
   Search,
   ArrowRight,
@@ -20,6 +18,7 @@ import {
   FileSignature,
   Database,
   HelpCircle,
+  Landmark,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -110,7 +109,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
       step: 5,
       title: 'Pantau Piutang, Surat Tagihan (SP), & Laporan',
       icon: Landmark,
-      badge: 'Monitoring & Rekonsiliasi',
+      badge: 'Monitoring & Accounting',
       color: 'purple',
       tabTarget: 'dashboard',
       tabLabel: 'Buka Dashboard',
@@ -119,8 +118,8 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
       keyPoints: [
         'Dashboard Eksekutif: Pantau total piutang aktif, tagihan jatuh tempo (Overdue), dan umur piutang (Aging).',
         'Surat Tagihan (SP): Terbitkan surat peringatan resmi (SP1, SP2, SP3) satu klik untuk invoice yang menunggak.',
-        'Rekonsiliasi Bank: Cocokkan mutasi mutasi rekening koran dengan bukti pembayaran kas.',
-        'Laporan Pajak & DJP: Rekapitulasi masa pajak PPN dan PPh 23 siap lapor.',
+        'Payment Gateway: Buat link pembayaran online dari invoice yang masih memiliki piutang.',
+        'Laporan Keuangan: Laba rugi, neraca, arus kas, piutang, dan hutang bersumber dari ledger Posted.',
       ],
     },
   ];
@@ -361,7 +360,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Alur Standar Siklus Penagihan & Keuangan</h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Proses bisnis terintegrasi dari penerbitan invoice hingga laporan audit dan pajak:
+                    Proses bisnis terintegrasi dari penerbitan invoice hingga accounting dan laporan audit:
                   </p>
                 </div>
 
@@ -386,10 +385,10 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                       desc: 'Catat mutasi masuk, saldo piutang otomatis berkurang, dan cetak kuitansi lunas.',
                     },
                     {
-                      phase: '4. Rekonsiliasi & Pajak',
-                      icon: Landmark,
+                      phase: '4. Accounting & Laporan',
+                      icon: BookOpen,
                       color: 'bg-purple-600',
-                      desc: 'Cocokkan bukti bank feed, rekap masa pajak PPh/PPN, dan periksa jejak audit.',
+                      desc: 'Posting jurnal otomatis, pantau integritas ledger, dan hasilkan laporan keuangan profesional.',
                     },
                   ].map((wf, idx) => {
                     const Icon = wf.icon;
@@ -466,14 +465,14 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                   desc: 'Pencatatan pembayaran kas/bank dengan penerbitan bukti kuitansi resmi bertanda tangan pejabat.',
                 },
                 {
-                  title: 'Rekonsiliasi Mutasi Bank',
-                  icon: Landmark,
-                  desc: 'Pencocokan mutasi bank feed dengan transaksi pembayaran untuk memastikan akurasi saldo buku kas.',
+                  title: 'Payment Gateway',
+                  icon: CreditCard,
+                  desc: 'Buat link pembayaran online dari invoice dan arahkan pelanggan ke halaman pembayaran gateway.',
                 },
                 {
-                  title: 'Laporan Pajak & DJP',
-                  icon: Receipt,
-                  desc: 'Rekapitulasi otomatis Masa Pajak PPN (Faktur Masukan/Keluaran) dan Bukti Potong PPh 23 untuk pelaporan pajak.',
+                  title: 'Laporan Keuangan',
+                  icon: BookOpen,
+                  desc: 'Laba rugi, neraca, arus kas, piutang, dan hutang dari ledger Posted, dengan export PDF/Excel dan print.',
                 },
                 {
                   title: 'Pengaturan & Penandatangan',
@@ -526,9 +525,9 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                       desc: 'Mengelola pengguna, master data pelanggan/produk, pembuatan semua dokumen, serta pengaturan profil perusahaan.',
                     },
                     {
-                      role: 'Finance (Bagian Keuangan & Pajak)',
+                      role: 'Finance / Accounting',
                       color: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                      desc: 'Membuat dan menerbitkan faktur, mencatat penerimaan kas & kuitansi, rekonsiliasi bank, dan mengakses laporan perpajakan.',
+                      desc: 'Membuat dan menerbitkan faktur, mencatat penerimaan kas & kuitansi, payment gateway, laporan keuangan, dan jejak audit.',
                     },
                     {
                       role: 'Staff (Staf Operasional)',

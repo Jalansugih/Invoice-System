@@ -419,8 +419,13 @@ export async function createInvoiceAction(
       const { error: itemsError } = await supabase.from('invoice_items').insert(itemRows);
       if (itemsError) {
         console.error('[createInvoiceAction] Failed inserting invoice items:', itemsError);
-        // Rollback invoice record if items insertion fails
+        // Rollback invoice record and its accounting trigger journal if items insertion fails.
         await supabase.from('invoices').delete().eq('id', newInvoice.id);
+        try {
+          await supabase.rpc('cleanup_orphan_invoice_journal' as any, { p_invoice_id: newInvoice.id });
+        } catch (cleanupErr) {
+          console.warn('[createInvoiceAction] Could not clean orphan accounting journal:', cleanupErr);
+        }
         return {
           success: false,
           error: `Gagal menyimpan rincian item invoice: ${itemsError.message}`,

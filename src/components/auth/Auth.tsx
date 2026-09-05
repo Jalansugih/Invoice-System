@@ -149,7 +149,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       sbUser.user_metadata?.organization_name ||
       'Perusahaan Baru';
 
-    const { data: rpcProfile, error: rpcError } = await supabase.rpc(
+    const { data: rpcProfile, error: rpcError } = await (supabase.rpc as any)(
       'bootstrap_current_user_profile',
       { p_org_name: rpcOrgName }
     );
@@ -323,14 +323,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               setSession(newSession);
               if (newSession?.user) {
                 setSupabaseUser(newSession.user);
-                const profile = await ensureProfile(newSession.user);
-                setUser(profile);
-                StorageService.setCurrentUser(profile);
-                localStorage.removeItem(DEMO_STORAGE_KEY);
-                // Background hydrate without blocking UI
-                StorageService.hydrateFromSupabase(profile.organizationId).catch((e) =>
-                  console.warn('[AuthProvider] OnAuthChange hydration note:', e)
-                );
+                try {
+                  const profile = await ensureProfile(newSession.user);
+                  setUser(profile);
+                  StorageService.setCurrentUser(profile);
+                  localStorage.removeItem(DEMO_STORAGE_KEY);
+                  // Background hydrate without blocking UI
+                  StorageService.hydrateFromSupabase(profile.organizationId).catch((e) =>
+                    console.warn('[AuthProvider] OnAuthChange hydration note:', e)
+                  );
+                } catch (bootstrapError: any) {
+                  // Do not let an async auth callback throw an uncaught browser
+                  // exception. Keep the session but surface the bootstrap issue
+                  // through the existing auth error state.
+                  setOrgBootstrapError(bootstrapError?.message || 'Profil organisasi gagal disiapkan.');
+                  setUser(null);
+                  console.error('[AuthProvider] Profile bootstrap failed:', bootstrapError);
+                }
               } else {
                 setSupabaseUser(null);
                 const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);

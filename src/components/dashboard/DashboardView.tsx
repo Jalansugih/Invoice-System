@@ -13,8 +13,6 @@ import {
   MailPlus,
   AlertCircle,
   ArrowRight,
-  Landmark,
-  Receipt,
   Calendar,
   Filter,
   Download,
@@ -152,8 +150,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const overdueInvoices = filteredInvoices.filter((i) => i.status === 'overdue');
   const org = StorageService.getOrganization();
-  const bankTxs = StorageService.getBankTransactions();
-  const unreconciledCount = bankTxs.filter((s) => s.status === 'unmatched' || s.status === 'matched').length;
 
   const periodRangeLabel = {
     month: '1 – 31 Agustus 2026 (Bulan Berjalan)',
@@ -175,7 +171,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Ringkasan piutang usaha, arus kas penagihan, rekonsiliasi perbankan, dan kepatuhan pajak.
+            Ringkasan piutang usaha, arus kas penagihan, accounting, dan kontrol keuangan.
           </p>
         </div>
 
@@ -313,55 +309,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Task 2: Bank Reconciliation Status */}
+        {/* Task 2: Payment Gateway */}
         <div
-          onClick={() => onNavigate('reconciliation')}
+          onClick={() => onNavigate('payment_gateway')}
           className="bg-white p-4 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer flex items-start gap-3.5"
         >
-          <div className="p-2 rounded-lg bg-blue-50 text-blue-600 shrink-0">
-            <Landmark className="w-4 h-4" />
+          <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+            <CreditCard className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-1">
-              <p className="text-xs font-bold text-slate-900">Rekonsiliasi Bank Feed</p>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                Live Feed
-              </span>
+              <p className="text-xs font-bold text-slate-900">Pembayaran Online</p>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">Gateway</span>
             </div>
-            <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-              {unreconciledCount > 0
-                ? `${unreconciledCount} mutasi menunggu pencocokan`
-                : 'BCA & Mandiri telah cocok 100%'}
-            </p>
-            <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-blue-600">
-              <span>Buka Rekonsiliasi Bank</span>
-              <ChevronRight className="w-3 h-3" />
-            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 truncate">Buat link pembayaran untuk invoice yang masih memiliki piutang.</p>
+            <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-blue-600"><span>Buka Payment Gateway</span><ChevronRight className="w-3 h-3" /></div>
           </div>
         </div>
 
-        {/* Task 3: Tax Compliance Status */}
+        {/* Task 3: Financial Reports */}
         <div
-          onClick={() => onNavigate('tax_reports')}
+          onClick={() => onNavigate('reports')}
           className="bg-white p-4 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer flex items-start gap-3.5"
         >
-          <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
-            <Receipt className="w-4 h-4" />
-          </div>
+          <div className="p-2 rounded-lg bg-blue-50 text-blue-600 shrink-0"><BookOpen className="w-4 h-4" /></div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-1">
-              <p className="text-xs font-bold text-slate-900">Kepatuhan Pajak (DJP)</p>
-              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
-                Masa 8 / 2026
-              </span>
+              <p className="text-xs font-bold text-slate-900">Laporan Keuangan</p>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">Accounting</span>
             </div>
-            <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-              SPT Masa PPN 1111 & Unifikasi PPh 21/23/4(2)
-            </p>
-            <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-blue-600">
-              <span>Periksa Status Pajak</span>
-              <ChevronRight className="w-3 h-3" />
-            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 truncate">Laba rugi, neraca, arus kas, piutang, dan hutang dari ledger Posted.</p>
+            <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-blue-600"><span>Buka Laporan Keuangan</span><ChevronRight className="w-3 h-3" /></div>
           </div>
         </div>
       </div>

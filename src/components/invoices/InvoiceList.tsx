@@ -137,7 +137,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
             Invoice & Billing Management
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Manage corporate billing documents, tracking, receivables, and payment reconciliation
+            Kelola invoice, piutang, pembayaran, dan dokumen penagihan dalam satu alur
           </p>
         </div>
 

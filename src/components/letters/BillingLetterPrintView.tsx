@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BillingLetter } from '../../types';
 import { StorageService } from '../../lib/storage';
-import { formatRupiah, formatIndoDate, terbilang } from '../../lib/utils';
+import { formatRupiah, formatIndoDate, terbilang, printElement } from '../../lib/utils';
 import { exportElementToPdf } from '../../lib/pdfExport';
 import { Button } from '../ui/Button';
 import { Printer, ArrowLeft, Download, Mail, Building2, Loader2 } from 'lucide-react';
@@ -18,7 +18,7 @@ export const BillingLetterPrintView: React.FC<BillingLetterPrintViewProps> = ({ 
   const bank = org.bankAccounts[0];
 
   const handlePrint = () => {
-    window.print();
+    printElement('printable-letter', `Surat Tagihan ${letter.letterNumber}`);
   };
 
   const handleExportPdf = async () => {

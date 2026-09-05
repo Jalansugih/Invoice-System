@@ -29,6 +29,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     price: 0,
     taxRate: 11,
     isActive: true,
+    trackInventory: false,
+    costPrice: 0,
+    minStock: 0,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -45,6 +48,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         price: productToEdit.price,
         taxRate: productToEdit.taxRate,
         isActive: productToEdit.isActive,
+        trackInventory: productToEdit.trackInventory ?? false,
+        costPrice: productToEdit.costPrice ?? 0,
+        minStock: productToEdit.minStock ?? 0,
       });
     } else {
       setFormData({
@@ -56,6 +62,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         price: 0,
         taxRate: 11,
         isActive: true,
+        trackInventory: false,
+        costPrice: 0,
+        minStock: 0,
       });
     }
     setErrors({});
@@ -195,6 +204,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             className="w-full rounded-lg border border-slate-300 p-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Input label="Harga Pokok / HPP (Rp)" type="number" min={0} value={formData.costPrice} onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) })} />
+          <Input label="Stok Minimum" type="number" min={0} value={formData.minStock} onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) })} />
+          <Select label="Pelacakan Persediaan" value={formData.trackInventory ? 'true' : 'false'} onChange={(e) => setFormData({ ...formData, trackInventory: e.target.value === 'true' })}>
+            <option value="false">Tidak — Jasa / Non-Stok</option>
+            <option value="true">Ya — Barang Persediaan</option>
+          </Select>
         </div>
 
         <div>

@@ -9,6 +9,26 @@ export interface UserProfile {
   organizationId: string;
 }
 
+
+export type AccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'COGS' | 'EXPENSE';
+export type NormalBalance = 'DEBIT' | 'CREDIT';
+export interface Account {
+  id: string; code: string; name: string; type: AccountType; normalBalance: NormalBalance; isActive: boolean;
+}
+export type ExpenseStatus = 'DRAFT' | 'POSTED' | 'CANCELLED';
+export type ExpensePaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
+export interface ExpenseItem {
+  id: string; accountId: string; description: string; quantity: number; unitPrice: number; taxRate: number; lineTotal: number; taxAmount: number;
+}
+export interface ExpenseJournalLine { accountId: string; debit: number; credit: number; description: string; }
+export interface ExpenseJournal { journalNumber: string; debit: number; credit: number; lines: ExpenseJournalLine[]; reversal?: boolean; }
+export interface ExpensePayment { id: string; expenseId: string; paymentDate: string; amount: number; paymentAccountId: string; referenceNumber?: string; notes?: string; journalNumber?: string; createdAt: string; }
+export interface Expense {
+  id: string; expenseNumber: string; transactionDate: string; vendorName: string; description: string; dueDate?: string; notes?: string;
+  status: ExpenseStatus; paymentStatus: ExpensePaymentStatus; subtotal: number; taxAmount: number; totalAmount: number; createdBy: string; createdAt: string; updatedAt: string;
+  items: ExpenseItem[]; journal?: ExpenseJournal; payments?: ExpensePayment[]; paidAmount?: number;
+}
+
 export interface BankAccount {
   id: string;
   bankName: string;
@@ -92,6 +112,10 @@ export interface Product {
   price: number;
   taxRate: number;
   isActive: boolean;
+  trackInventory?: boolean;
+  costPrice?: number;
+  stockQty?: number;
+  minStock?: number;
 }
 
 export type InvoiceStatus =
@@ -258,7 +282,7 @@ export interface AuditLog {
   userName: string;
   userRole: UserRole;
   action: 'create' | 'update' | 'delete' | 'send' | 'pay' | 'cancel' | 'status_change' | 'reconcile';
-  module: 'invoices' | 'payments' | 'customers' | 'billing_letters' | 'products' | 'settings' | 'auth' | 'reconciliation' | 'documents' | 'business_documents';
+  module: 'invoices' | 'payments' | 'customers' | 'billing_letters' | 'products' | 'settings' | 'auth' | 'reconciliation' | 'documents' | 'business_documents' | 'expenses' | 'vendors' | 'purchases';
   recordId: string;
   recordTitle: string;
   entityType?: string;
@@ -392,3 +416,10 @@ export interface BusinessDocument {
   createdAt: string;
   updatedAt: string;
 }
+
+
+export interface Vendor { id:string; code:string; name:string; contactName?:string; email?:string; phone?:string; address?:string; isActive:boolean; createdAt:string; }
+export type PurchaseStatus = 'DRAFT'|'RECEIVED'|'CANCELLED';
+export type PurchasePaymentStatus = 'UNPAID'|'PARTIAL'|'PAID';
+export interface PurchaseItem { id:string; productId:string; productName:string; quantity:number; unitCost:number; lineTotal:number; }
+export interface Purchase { id:string; purchaseNumber:string; vendorId?:string; vendorName:string; purchaseDate:string; dueDate?:string; status:PurchaseStatus; paymentStatus:PurchasePaymentStatus; items:PurchaseItem[]; totalAmount:number; paidAmount:number; notes?:string; createdAt:string; updatedAt:string; }

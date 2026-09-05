@@ -1,0 +1,2 @@
+# V17 — FASE 2C Pembelian & Vendor
+Implemented Vendor/Purchase foundation, purchase receiving into existing inventory ledger and Moving Average Cost, purchase statuses, local audit trail, and SQL schema foundation. The current UI posts receipt as credit purchase by default so inventory can be received without inventing a cash transaction. Next production hardening should add server-side atomic RPC that creates purchase + items + inventory movements + journal in one database transaction.

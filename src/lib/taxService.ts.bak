@@ -25,7 +25,6 @@ import {
   CoretaxScheduleMapping,
 } from '../types/tax';
 import { StorageService } from './storage';
-import { getCachedExpenses } from './expenseService';
 import { Invoice, Payment, Customer } from '../types';
 
 const TAX_STORAGE_KEYS = {
@@ -1231,15 +1230,13 @@ export class TaxService {
     const costOfGoodsSold = Math.round(grossRevenue * 0.48); // HPP ~48%
     const grossProfit = grossRevenue - costOfGoodsSold;
     
-    // Operating expenses come from real posted expense transactions when available.
-    // This removes the old percentage-of-revenue estimate from the commercial P&L.
-    const realExpenses = getCachedExpenses().filter((e) => e.status === 'POSTED' && e.transactionDate.startsWith(String(year)));
-    const operatingExpenses = realExpenses.reduce((sum, e) => sum + e.totalAmount, 0);
+    // Operating expenses
+    const operatingExpenses = Math.round(grossRevenue * 0.32); // Beban Operasional ~32%
     const operatingIncome = grossProfit - operatingExpenses;
     
-    // Other income/expense is intentionally zero until a dedicated journal module records it.
-    const otherIncome = 0;
-    const otherExpenses = 0;
+    // Other Income & Expenses
+    const otherIncome = 24500000; // Bunga deposito + selisih kurs
+    const otherExpenses = 6200000; // Biaya admin bank
     const commercialNetProfitBeforeTax = operatingIncome + otherIncome - otherExpenses;
 
     // 2. Fiscal Corrections
@@ -1918,12 +1915,6 @@ export class TaxService {
     const invoices = StorageService.getInvoices();
     const assets = this.getFixedAssets();
     const txs = this.getTaxTransactions();
-    const expenses = getCachedExpenses().filter((e) => e.status === 'POSTED' && e.transactionDate.startsWith(String(year)) && (() => {
-      const d = new Date(e.transactionDate);
-      if (month && d.getMonth() + 1 !== month) return false;
-      if (quarter && Math.ceil((d.getMonth() + 1) / 3) !== quarter) return false;
-      return true;
-    })());
 
     // Filter invoices by year and optional month / quarter
     const filteredInvoices = invoices.filter((inv) => {
@@ -1957,42 +1948,40 @@ export class TaxService {
     // Annual Depreciation
     const annualDepreciation = assets.reduce((sum, a) => sum + a.commercialDepreciationAnnual, 0);
 
-    // Operating expenses come from real posted expense transactions.
-    // No percentage-of-revenue estimate is used here anymore.
-    const expenseByCode = new Map<string, number>();
-    expenses.forEach((e) => e.items.forEach((item) => {
-      const amount = (item.lineTotal || 0) + (item.taxAmount || 0);
-      expenseByCode.set(item.accountId, (expenseByCode.get(item.accountId) || 0) + amount);
-    }));
-    const accountNames: Record<string, string> = {
-      '6-1000': 'Beban Gaji & Tunjangan', '6-1100': 'Beban Sewa', '6-1200': 'Beban Listrik & Air',
-      '6-1300': 'Beban Internet & Telepon', '6-1400': 'Beban Marketing', '6-1500': 'Beban Administrasi',
-      '6-1600': 'Beban Transportasi', '6-1700': 'Beban Bank', '6-1900': 'Beban Operasional Lainnya'
-    };
-    const accountCodeById: Record<string, string> = {};
-    const rawAccounts = (() => { try { return JSON.parse(localStorage.getItem('billingflow_accounts') || '[]'); } catch { return []; } })();
-    rawAccounts.forEach((a: any) => { accountCodeById[a.id] = a.code; });
-    const realExpenseBreakdown = Array.from(expenseByCode.entries()).map(([accountId, amount]) => {
-      const code = accountCodeById[accountId] || accountId;
-      return { code, name: accountNames[code] || 'Beban Operasional', amount, category: 'Beban Usaha' };
-    }).filter(x => x.amount > 0);
-    const salariesAndWages = realExpenseBreakdown.filter(x => x.code === '6-1000').reduce((s,x)=>s+x.amount,0);
-    const rentExpense = realExpenseBreakdown.filter(x => x.code === '6-1100').reduce((s,x)=>s+x.amount,0);
-    const utilitiesElectricityWater = realExpenseBreakdown.filter(x => x.code === '6-1200').reduce((s,x)=>s+x.amount,0);
-    const internetAndTelecom = realExpenseBreakdown.filter(x => x.code === '6-1300').reduce((s,x)=>s+x.amount,0);
-    const transportationAndTravel = realExpenseBreakdown.filter(x => x.code === '6-1600').reduce((s,x)=>s+x.amount,0);
-    const shippingAndDelivery = 0;
-    const marketingAndPromotion = realExpenseBreakdown.filter(x => x.code === '6-1400').reduce((s,x)=>s+x.amount,0);
-    const officeAndAdministration = realExpenseBreakdown.filter(x => x.code === '6-1500').reduce((s,x)=>s+x.amount,0);
-    const bankChargesAndFees = realExpenseBreakdown.filter(x => x.code === '6-1700').reduce((s,x)=>s+x.amount,0);
-    const otherOperatingExpenses = realExpenseBreakdown.filter(x => x.code === '6-1900' || !['6-1000','6-1100','6-1200','6-1300','6-1400','6-1500','6-1600','6-1700'].includes(x.code)).reduce((s,x)=>s+x.amount,0);
+    // Operating expenses scaled realistically based on activity
+    const factor = netSales > 0 ? netSales / 1500000000 : 1;
+    const salariesAndWages = Math.round(180000000 * Math.max(0.6, factor));
+    const rentExpense = 48000000;
+    const utilitiesElectricityWater = Math.round(14500000 * Math.max(0.7, factor));
+    const internetAndTelecom = 18000000;
+    const transportationAndTravel = Math.round(22000000 * Math.max(0.5, factor));
+    const shippingAndDelivery = Math.round(12500000 * Math.max(0.5, factor));
+    const marketingAndPromotion = Math.round(45000000 * Math.max(0.5, factor));
+    const officeAndAdministration = Math.round(16800000 * Math.max(0.6, factor));
+    const bankChargesAndFees = 3200000;
+    const otherOperatingExpenses = 8500000;
     const depreciationExpense = Math.round(annualDepreciation);
-    const totalOperatingExpenses = realExpenseBreakdown.reduce((s,x)=>s+x.amount,0) + depreciationExpense;
+
+    const totalOperatingExpenses =
+      salariesAndWages +
+      rentExpense +
+      utilitiesElectricityWater +
+      internetAndTelecom +
+      transportationAndTravel +
+      shippingAndDelivery +
+      marketingAndPromotion +
+      officeAndAdministration +
+      bankChargesAndFees +
+      depreciationExpense +
+      otherOperatingExpenses;
+
     const operatingProfit = grossProfit - totalOperatingExpenses;
-    const otherIncome = 0;
-    const otherExpenses = 0;
-    const netOtherIncome = 0;
+    const otherIncome = 7800000; // Bunga giro / jasa giro bank
+    const otherExpenses = 1500000; // Selisih kurs / administrasi
+    const netOtherIncome = otherIncome - otherExpenses;
+
     const netProfitBeforeTax = operatingProfit + netOtherIncome;
+    // 11% estimate based on Pasal 31E UU HPP
     const estimatedTaxExpense = netProfitBeforeTax > 0 ? Math.round(netProfitBeforeTax * 0.11) : 0;
     const netProfitAfterTax = netProfitBeforeTax - estimatedTaxExpense;
 
@@ -2007,7 +1996,19 @@ export class TaxService {
         { code: '5-1200', name: 'Ongkos Angkut Pembelian', amount: freightIn, category: 'HPP' },
         { code: '5-1300', name: 'Persediaan Akhir', amount: -endingInventory, category: 'HPP' },
       ],
-      operatingExpenses: realExpenseBreakdown.length ? realExpenseBreakdown : [],
+      operatingExpenses: [
+        { code: '6-1001', name: 'Beban Gaji & Tunjangan Karyawan', amount: salariesAndWages, category: 'Beban Usaha' },
+        { code: '6-1002', name: 'Beban Sewa Kantor & Co-working', amount: rentExpense, category: 'Beban Usaha' },
+        { code: '6-1003', name: 'Beban Listrik, Air & Utilitas', amount: utilitiesElectricityWater, category: 'Beban Usaha' },
+        { code: '6-1004', name: 'Beban Internet, Server Cloud & Hosting', amount: internetAndTelecom, category: 'Beban Usaha' },
+        { code: '6-2001', name: 'Beban Transportasi & Perjalanan Dinas', amount: transportationAndTravel, category: 'Beban Usaha' },
+        { code: '6-2002', name: 'Beban Pengiriman & Logistik', amount: shippingAndDelivery, category: 'Beban Usaha' },
+        { code: '6-2003', name: 'Beban Pemasaran, Iklan & Promosi', amount: marketingAndPromotion, category: 'Beban Usaha' },
+        { code: '6-2004', name: 'Beban Perlengkapan & Administrasi Kantor', amount: officeAndAdministration, category: 'Beban Usaha' },
+        { code: '6-2005', name: 'Beban Administrasi Bank & Payment Gateway', amount: bankChargesAndFees, category: 'Beban Usaha' },
+        { code: '6-2006', name: 'Beban Penyusutan Aset Tetap', amount: depreciationExpense, category: 'Beban Usaha' },
+        { code: '6-2007', name: 'Beban Operasional Lain-lain', amount: otherOperatingExpenses, category: 'Beban Usaha' },
+      ],
     };
 
     let periodLabel = `Tahun ${year}`;
@@ -2102,8 +2103,7 @@ export class TaxService {
     // Liabilities
     const tradePayables = Math.round(is.purchases * 0.25); // 25% utang usaha supplier
     const taxPayables = Math.round(is.estimatedTaxExpense * 0.3) + 4500000; // PPN + PPh 21/23
-    const unpaidExpenses = getCachedExpenses().filter((e) => e.status === 'POSTED' && e.paymentStatus !== 'PAID' && e.transactionDate.startsWith(String(year)));
-    const accruedExpenses = unpaidExpenses.reduce((sum, e) => sum + e.totalAmount, 0);
+    const accruedExpenses = 18500000; // Beban akrual gaji & utilitas
     const shortTermBankLoans = 0;
     const otherCurrentLiabilities = 5000000;
     const totalCurrentLiabilities = tradePayables + taxPayables + accruedExpenses + shortTermBankLoans + otherCurrentLiabilities;
@@ -2232,8 +2232,7 @@ export class TaxService {
 
     const customerReceipts = Math.round(is.grossSales * 0.92);
     const supplierPayments = Math.round(is.purchases * 0.88);
-    const expenses = getCachedExpenses().filter((e) => e.status === 'POSTED' && e.paymentStatus === 'PAID' && e.transactionDate.startsWith(String(year)));
-    const operatingExpensesPaid = expenses.reduce((sum, e) => sum + e.totalAmount, 0);
+    const operatingExpensesPaid = Math.round(is.totalOperatingExpenses - is.depreciationExpense);
     const taxesPaid = Math.round(is.estimatedTaxExpense * 0.7);
 
     const netCashFromOperations = customerReceipts - supplierPayments - operatingExpensesPaid - taxesPaid;

@@ -63,3 +63,15 @@ Pola ini jadi template untuk modul berikutnya (Billing Letter, Document, Audit L
 - Conversion ke Surat Jalan menghitung quantity yang masih tersisa.
 - Pencarian mencakup nomor dokumen, customer, dan referensi.
 - Aksi dokumen berikutnya ditampilkan langsung pada daftar dan preview.
+
+## FASE 1B — Pengeluaran + Integrasi Laporan
+
+- Pengeluaran mendukung beberapa baris biaya dalam satu transaksi.
+- Transaksi Posted menjadi sumber aktual Beban Usaha pada Laba Rugi, menggantikan estimasi persentase omzet.
+- Pengeluaran yang belum dibayar menjadi dasar saldo Beban Akrual/Hutang terkait pada laporan posisi keuangan.
+- Arus Kas Operasi menggunakan pengeluaran Posted yang berstatus PAID, bukan estimasi persentase.
+- PPh Badan commercial P&L menggunakan pengeluaran aktual yang tersedia di cache aplikasi.
+- Posted accounting record tidak boleh diubah langsung melalui RPC; koreksi diarahkan melalui pembatalan/reversal.
+- Pembatalan pengeluaran membuat jurnal reversal dan audit log.
+
+Catatan verifikasi: dependency `node_modules` tidak dapat dipulihkan penuh dalam sesi ini, sehingga `npm run lint/build` belum dapat dinyatakan lulus. Pemeriksaan struktur sumber dilakukan dan tidak menemukan error sintaks pada file yang diubah.

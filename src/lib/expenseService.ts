@@ -1,0 +1,238 @@
+import { supabase, isSupabaseConfigured } from './supabase';
+import { generateId, StorageService } from './storage';
+import { Account, Expense, ExpenseItem, ExpensePayment, ExpensePaymentStatus } from '../types';
+
+const EXPENSE_STORAGE_KEY = 'billingflow_expenses';
+const ACCOUNT_STORAGE_KEY = 'billingflow_accounts';
+
+const DEFAULT_ACCOUNTS: Account[] = [
+  { id: '00000000-0000-4000-8100-000000000101', code: '1-1000', name: 'Kas', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8100-000000000102', code: '1-1100', name: 'Bank BCA', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8100-000000000103', code: '1-1200', name: 'Bank Mandiri', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8200-000000000101', code: '2-1000', name: 'Hutang Usaha', type: 'LIABILITY', normalBalance: 'CREDIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000101', code: '6-1000', name: 'Beban Gaji & Tunjangan', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000102', code: '6-1100', name: 'Beban Sewa', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000103', code: '6-1200', name: 'Beban Listrik & Air', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000104', code: '6-1300', name: 'Beban Internet & Telepon', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000105', code: '6-1400', name: 'Beban Marketing', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000106', code: '6-1500', name: 'Beban Administrasi', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000107', code: '6-1600', name: 'Beban Transportasi', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000108', code: '6-1700', name: 'Beban Bank', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+  { id: '00000000-0000-4000-8600-000000000199', code: '6-1900', name: 'Beban Operasional Lainnya', type: 'EXPENSE', normalBalance: 'DEBIT', isActive: true },
+];
+
+const readLocal = <T,>(key: string, fallback: T): T => {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) as T : fallback; } catch { return fallback; }
+};
+const writeLocal = <T,>(key: string, value: T) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore demo cache errors */ } };
+
+/** Synchronous cache used by synchronous financial statement builders.
+ * The cache is refreshed by ExpenseService.list() whenever the expense module loads.
+ */
+export const getCachedExpenses = (): Expense[] => readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []);
+
+export interface ExpenseInput {
+  id?: string;
+  transactionDate: string;
+  vendorName?: string;
+  description: string;
+  dueDate?: string;
+  notes?: string;
+  paymentStatus: ExpensePaymentStatus;
+  paymentAccountId?: string;
+  items: Array<Pick<ExpenseItem, 'accountId' | 'description' | 'quantity' | 'unitPrice' | 'taxRate'>>;
+}
+
+export class ExpenseService {
+  static async getAccounts(orgId?: string): Promise<Account[]> {
+    if (isSupabaseConfigured && orgId) {
+      try {
+        const { error: ensureError } = await supabase.rpc('ensure_default_accounts' as any);
+        if (ensureError) throw ensureError;
+        const { data, error } = await supabase.from('accounts' as any).select('*').eq('organization_id', orgId).eq('is_active', true).order('code');
+        if (error) throw error;
+        return (data || []).map((a: any) => ({ id: a.id, code: a.code, name: a.name, type: a.account_type, normalBalance: a.normal_balance, isActive: a.is_active !== false }));
+      } catch (e) { console.error('ExpenseService.getAccounts:', e); }
+    }
+    const local = readLocal<Account[]>(ACCOUNT_STORAGE_KEY, DEFAULT_ACCOUNTS);
+    writeLocal(ACCOUNT_STORAGE_KEY, local);
+    return local;
+  }
+
+  static async list(orgId?: string): Promise<Expense[]> {
+    if (isSupabaseConfigured && orgId) {
+      try {
+        const { data, error } = await supabase.from('expense_transactions' as any).select('*, expense_items(*)').eq('organization_id', orgId).order('transaction_date', { ascending: false }).order('created_at', { ascending: false });
+        if (error) throw error;
+        const mapped = (data || []).map(this.mapRow);
+        const ids = mapped.map(e => e.id);
+        if (ids.length) {
+          const { data: paymentRows } = await supabase.from('expense_payments' as any).select('*').eq('organization_id', orgId).in('expense_id', ids).order('payment_date', { ascending: false });
+          for (const row of paymentRows || []) {
+            const target = mapped.find(e => e.id === row.expense_id);
+            if (target) {
+              const payment: ExpensePayment = { id: row.id, expenseId: row.expense_id, paymentDate: row.payment_date, amount: Number(row.amount)||0, paymentAccountId: row.payment_account_id, referenceNumber: row.reference_number || undefined, notes: row.notes || undefined, createdAt: row.created_at, journalNumber: undefined };
+              target.payments = [...(target.payments || []), payment];
+              target.paidAmount = (target.paidAmount || 0) + payment.amount;
+            }
+          }
+          // Legacy V12 expenses created as PAID did not create expense_payments rows.
+          // Keep their paid amount equal to the transaction total without double-counting
+          // newer payment rows.
+          for (const target of mapped) {
+            if (target.paymentStatus === 'PAID' && !(target.paidAmount || 0)) target.paidAmount = target.totalAmount;
+          }
+          const paymentIds = (paymentRows || []).map((p: any) => p.id).filter(Boolean);
+          if (paymentIds.length) {
+            const { data: paymentJournals } = await supabase
+              .from('journal_entries' as any)
+              .select('reference_id,journal_number')
+              .eq('organization_id', orgId)
+              .eq('reference_type', 'expense_payment')
+              .in('reference_id', paymentIds);
+            for (const j of paymentJournals || []) {
+              for (const target of mapped) {
+                const payment = (target.payments || []).find(p => p.id === j.reference_id);
+                if (payment) payment.journalNumber = j.journal_number;
+              }
+            }
+          }
+        }
+        if (ids.length) {
+          const { data: journals, error: journalError } = await supabase.from('journal_entries' as any).select('id,reference_id,journal_number,journal_date,status,journal_lines(account_id,debit,credit,description)').eq('organization_id', orgId).eq('reference_type', 'expense').in('reference_id', ids);
+          if (!journalError) {
+            for (const j of journals || []) {
+              const target = mapped.find(e => e.id === j.reference_id);
+              if (target) target.journal = { journalNumber: j.journal_number, debit: (j.journal_lines || []).reduce((s:any,l:any)=>s+Number(l.debit||0),0), credit: (j.journal_lines || []).reduce((s:any,l:any)=>s+Number(l.credit||0),0), lines: (j.journal_lines || []).map((l:any)=>({ accountId:l.account_id, debit:Number(l.debit)||0, credit:Number(l.credit)||0, description:l.description||'' })) };
+            }
+          }
+        }
+        writeLocal(EXPENSE_STORAGE_KEY, mapped);
+        return mapped;
+      } catch (e) { console.error('ExpenseService.list:', e); }
+    }
+    return readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []);
+  }
+
+  static async save(input: ExpenseInput, orgId: string, userId: string): Promise<Expense> {
+    this.validate(input);
+    const subtotal = input.items.reduce((s, i) => s + Math.round(i.quantity * i.unitPrice), 0);
+    const taxAmount = input.items.reduce((s, i) => s + Math.round(i.quantity * i.unitPrice * (i.taxRate || 0) / 100), 0);
+    const total = subtotal + taxAmount;
+
+    if (isSupabaseConfigured) {
+      const { data: session } = await supabase.auth.getSession();
+      if (session.session) {
+        const { data, error } = await supabase.rpc('create_expense_atomic' as any, {
+          p_expense_id: input.id || null,
+          p_transaction_date: input.transactionDate,
+          p_vendor_name: input.vendorName || null,
+          p_description: input.description,
+          p_due_date: input.dueDate || null,
+          p_notes: input.notes || null,
+          p_payment_status: input.paymentStatus,
+          p_payment_account_id: input.paymentAccountId || null,
+          p_items: input.items.map(i => ({ account_id: i.accountId, description: i.description, quantity: i.quantity, unit_price: i.unitPrice, tax_rate: i.taxRate || 0 })),
+        });
+        if (error) throw new Error(error.message);
+        const rows = await this.list(orgId);
+        const saved = rows.find(e => e.id === (data as any)?.id) || this.mapRow(data);
+        const cached = readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []).filter(e => e.id !== saved.id);
+        writeLocal(EXPENSE_STORAGE_KEY, [saved, ...cached]);
+        return saved;
+      }
+    }
+
+    const accounts = await this.getAccounts();
+    const now = new Date().toISOString();
+    const expense: Expense = {
+      id: input.id || generateId(),
+      expenseNumber: input.id ? (readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []).find(e => e.id === input.id)?.expenseNumber || `EXP-${input.transactionDate.slice(0,4)}-${Date.now().toString().slice(-5)}`) : `EXP-${input.transactionDate.slice(0,4)}-${String(readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []).length + 1).padStart(5, '0')}`,
+      transactionDate: input.transactionDate,
+      vendorName: input.vendorName || '',
+      description: input.description,
+      dueDate: input.dueDate,
+      notes: input.notes || '',
+      status: 'POSTED',
+      paymentStatus: input.paymentStatus,
+      subtotal,
+      taxAmount,
+      totalAmount: total,
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+      items: input.items.map(i => ({ ...i, id: generateId(), lineTotal: Math.round(i.quantity * i.unitPrice), taxAmount: Math.round(i.quantity * i.unitPrice * (i.taxRate || 0) / 100) })),
+      journal: { journalNumber: `JRN-${input.transactionDate.slice(0,4)}-${Date.now().toString().slice(-6)}`, debit: total, credit: total, lines: [
+        ...input.items.map(i => ({ accountId: i.accountId, debit: Math.round(i.quantity * i.unitPrice) + Math.round(i.quantity * i.unitPrice * (i.taxRate || 0) / 100), credit: 0, description: i.description })),
+        { accountId: input.paymentStatus === 'UNPAID' ? (accounts.find(a => a.code === '2-1000')?.id || '') : (input.paymentAccountId || ''), debit: 0, credit: total, description: input.paymentStatus === 'UNPAID' ? 'Hutang usaha' : 'Pembayaran pengeluaran' },
+      ] },
+    };
+    if (input.paymentStatus !== 'UNPAID' && !input.paymentAccountId) throw new Error('Pilih akun Kas/Bank untuk pengeluaran yang sudah dibayar.');
+    if (input.paymentStatus !== 'UNPAID') expense.journal.lines[expense.journal.lines.length - 1].accountId = input.paymentAccountId!;
+    const all = readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []).filter(e => e.id !== expense.id);
+    writeLocal(EXPENSE_STORAGE_KEY, [expense, ...all]);
+    StorageService.addAuditLog('create', 'expenses', expense.id, expense.expenseNumber, `Mencatat pengeluaran ${expense.expenseNumber} sebesar Rp${expense.totalAmount.toLocaleString('id-ID')}`);
+    return expense;
+  }
+
+  static async recordPayment(input: { expenseId: string; paymentDate: string; amount: number; paymentAccountId: string; referenceNumber?: string; notes?: string }, orgId: string): Promise<void> {
+    if (input.amount <= 0) throw new Error('Nominal pembayaran harus lebih dari Rp 0.');
+    if (isSupabaseConfigured) {
+      const { data: session } = await supabase.auth.getSession();
+      if (session.session) {
+        const { error } = await supabase.rpc('record_expense_payment_atomic' as any, { p_expense_id: input.expenseId, p_payment_date: input.paymentDate, p_amount: input.amount, p_payment_account_id: input.paymentAccountId, p_reference_number: input.referenceNumber || null, p_notes: input.notes || null });
+        if (error) throw new Error(error.message);
+        return;
+      }
+    }
+    const all = readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []);
+    const target = all.find(e => e.id === input.expenseId);
+    if (!target || target.status !== 'POSTED') throw new Error('Pengeluaran tidak ditemukan atau sudah dibatalkan.');
+    const paid = target.payments?.reduce((sum,p)=>sum+p.amount,0) || (target.paidAmount || 0);
+    const remaining = Math.max(0, target.totalAmount-paid);
+    if (input.amount > remaining) throw new Error('Pembayaran melebihi sisa hutang.');
+    const payment: ExpensePayment = { id: generateId(), expenseId: target.id, paymentDate: input.paymentDate, amount: input.amount, paymentAccountId: input.paymentAccountId, referenceNumber: input.referenceNumber, notes: input.notes, createdAt: new Date().toISOString() };
+    target.payments = [...(target.payments || []), payment];
+    target.paidAmount = paid + input.amount;
+    target.paymentStatus = target.paidAmount >= target.totalAmount ? 'PAID' : 'PARTIAL';
+    target.updatedAt = new Date().toISOString();
+    writeLocal(EXPENSE_STORAGE_KEY, all);
+    StorageService.addAuditLog('create', 'expenses', target.id, target.expenseNumber, `Pembayaran pengeluaran Rp${input.amount.toLocaleString('id-ID')}`);
+  }
+
+  static async cancel(id: string, orgId?: string): Promise<void> {
+    if (isSupabaseConfigured && orgId) {
+      const { data: session } = await supabase.auth.getSession();
+      if (session.session) {
+        const { error } = await supabase.rpc('cancel_expense_atomic' as any, { p_expense_id: id });
+        if (error) throw new Error(error.message);
+        return;
+      }
+    }
+    const all = readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []);
+    const target = all.find(e => e.id === id);
+    if (!target) throw new Error('Pengeluaran tidak ditemukan.');
+    if (target.status === 'CANCELLED') return;
+    target.status = 'CANCELLED'; target.updatedAt = new Date().toISOString();
+    StorageService.addAuditLog('cancel', 'expenses', target.id, target.expenseNumber, `Membatalkan pengeluaran ${target.expenseNumber} dan membalik jurnal`);
+    target.journal = target.journal ? { ...target.journal, reversal: true, lines: target.journal.lines.map(l => ({ ...l, debit: l.credit, credit: l.debit })) } : target.journal;
+    writeLocal(EXPENSE_STORAGE_KEY, all);
+  }
+
+  private static validate(input: ExpenseInput) {
+    if (!input.transactionDate) throw new Error('Tanggal pengeluaran wajib diisi.');
+    if (!input.description.trim()) throw new Error('Deskripsi pengeluaran wajib diisi.');
+    if (!input.items.length) throw new Error('Tambahkan minimal satu rincian biaya.');
+    input.items.forEach(i => { if (!i.accountId) throw new Error('Setiap rincian harus memiliki akun biaya.'); if (i.quantity <= 0 || i.unitPrice < 0) throw new Error('Jumlah dan harga harus valid.'); });
+    if (input.paymentStatus !== 'UNPAID' && !input.paymentAccountId) throw new Error('Pilih akun Kas/Bank.');
+  }
+
+  private static mapRow(row: any): Expense {
+    return {
+      id: row.id, expenseNumber: row.expense_number, transactionDate: row.transaction_date, vendorName: row.vendor_name || '', description: row.description, dueDate: row.due_date || undefined, notes: row.notes || '', status: row.status, paymentStatus: row.payment_status,
+      subtotal: Number(row.subtotal) || 0, taxAmount: Number(row.tax_amount) || 0, totalAmount: Number(row.total_amount) || 0, createdBy: row.created_by || '', createdAt: row.created_at, updatedAt: row.updated_at,
+      items: (row.expense_items || []).map((i: any) => ({ id: i.id, accountId: i.account_id, description: i.description, quantity: Number(i.quantity), unitPrice: Number(i.unit_price), taxRate: Number(i.tax_rate) || 0, lineTotal: Number(i.line_total) || 0, taxAmount: Number(i.tax_amount) || 0 })), payments: [], paidAmount: 0,
+      journal: row.journal ? { journalNumber: row.journal.journal_number, debit: Number(row.journal.debit) || Number(row.total_amount) || 0, credit: Number(row.journal.credit) || Number(row.total_amount) || 0, lines: row.journal.lines || [] } : undefined,
+    };
+  }
+}

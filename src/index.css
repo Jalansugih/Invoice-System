@@ -153,6 +153,10 @@
   #printable-invoice,
   #printable-letter,
   #printable-receipt,
+  #business-document-print,
+  #purchase-detail-print,
+  #printable-tax-statement,
+  #printable-report,
   .printable-document {
     position: static !important;
     display: block !important;
@@ -175,6 +179,10 @@
   #printable-invoice *,
   #printable-letter *,
   #printable-receipt *,
+  #business-document-print *,
+  #purchase-detail-print *,
+  #printable-tax-statement *,
+  #printable-report *,
   .printable-document * {
     visibility: visible !important;
     color-adjust: exact !important;

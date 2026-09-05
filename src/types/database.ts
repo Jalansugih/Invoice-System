@@ -162,6 +162,16 @@ export interface Database {
         Update: TaxTransactionUpdate;
         Relationships: [];
       };
+      accounts: { Row: AccountRow; Insert: AccountInsert; Update: AccountUpdate; Relationships: []; };
+      expense_transactions: { Row: ExpenseTransactionRow; Insert: ExpenseTransactionInsert; Update: ExpenseTransactionUpdate; Relationships: []; };
+      expense_items: { Row: ExpenseItemRow; Insert: ExpenseItemInsert; Update: ExpenseItemUpdate; Relationships: []; };
+      expense_payments: { Row: ExpensePaymentRow; Insert: ExpensePaymentInsert; Update: ExpensePaymentUpdate; Relationships: []; };
+      journal_entries: { Row: JournalEntryRow; Insert: JournalEntryInsert; Update: JournalEntryUpdate; Relationships: []; };
+      journal_lines: { Row: JournalLineRow; Insert: JournalLineInsert; Update: JournalLineUpdate; Relationships: []; };
+      vendors: { Row: VendorRow; Insert: VendorInsert; Update: VendorUpdate; Relationships: []; };
+      purchases: { Row: PurchaseRow; Insert: PurchaseInsert; Update: PurchaseUpdate; Relationships: []; };
+      purchase_items: { Row: PurchaseItemRow; Insert: PurchaseItemInsert; Update: PurchaseItemUpdate; Relationships: []; };
+      purchase_payments: { Row: PurchasePaymentRow; Insert: PurchasePaymentInsert; Update: PurchasePaymentUpdate; Relationships: []; };
     };
     Views: {
       [_ in never]: never;
@@ -174,6 +184,18 @@ export interface Database {
       get_next_sequence: {
         Args: { p_sequence_name: string; p_minimum_value?: number };
         Returns: number;
+      };
+      bootstrap_current_user_profile: {
+        Args: { p_org_name?: string };
+        Returns: ProfileRow & { organization_id: string };
+      };
+      record_purchase_atomic: {
+        Args: { p_purchase_number: string; p_vendor_id?: string | null; p_vendor_name: string; p_purchase_date: string; p_due_date?: string | null; p_notes?: string | null; p_items: Json };
+        Returns: Json;
+      };
+      record_purchase_payment_atomic: {
+        Args: { p_purchase_id: string; p_payment_date: string; p_amount: number; p_payment_account_id: string; p_reference_number?: string | null; p_notes?: string | null; p_idempotency_key?: string | null };
+        Returns: Json;
       };
       record_payment_atomic: {
         Args: {
@@ -437,6 +459,37 @@ export type ClientRow = CustomerRow;
 export type ClientInsert = CustomerInsert;
 export type ClientUpdate = CustomerUpdate;
 
+export type AccountRow = { id:string; organization_id:string; code:string; name:string; account_type:string; normal_balance:string; is_active:boolean; created_at:string; updated_at:string; };
+export type AccountInsert = Partial<AccountRow> & { organization_id:string; code:string; name:string; account_type:string; normal_balance:string };
+export type AccountUpdate = Partial<AccountRow>;
+export type ExpenseTransactionRow = { id:string; organization_id:string; expense_number:string; transaction_date:string; vendor_name:string|null; description:string; due_date:string|null; notes:string|null; status:string; payment_status:string; payment_account_id:string|null; subtotal:number; tax_amount:number; total_amount:number; created_by:string|null; created_at:string; updated_at:string; expense_items?: ExpenseItemRow[]; };
+export type ExpenseTransactionInsert = Partial<ExpenseTransactionRow> & { organization_id:string; expense_number:string; transaction_date:string; description:string };
+export type ExpenseTransactionUpdate = Partial<ExpenseTransactionRow>;
+export type ExpenseItemRow = { id:string; expense_id:string; account_id:string; description:string; quantity:number; unit_price:number; tax_rate:number; line_total:number; tax_amount:number; created_at:string };
+export type ExpenseItemInsert = Partial<ExpenseItemRow> & { expense_id:string; account_id:string; description:string };
+export type ExpenseItemUpdate = Partial<ExpenseItemRow>;
+export type ExpensePaymentRow = { id:string; organization_id:string; expense_id:string; payment_date:string; amount:number; payment_account_id:string; reference_number:string|null; notes:string|null; journal_entry_id:string|null; created_by:string|null; created_at:string };
+export type ExpensePaymentInsert = Partial<ExpensePaymentRow> & { organization_id:string; expense_id:string; payment_date:string; amount:number; payment_account_id:string };
+export type ExpensePaymentUpdate = Partial<ExpensePaymentRow>;
+export type JournalEntryRow = { id:string; organization_id:string; journal_number:string; journal_date:string; reference_type:string; reference_id:string; description:string; status:string; created_by:string|null; created_at:string; journal_lines?: JournalLineRow[] };
+export type JournalEntryInsert = Partial<JournalEntryRow> & { organization_id:string; journal_number:string; journal_date:string; reference_type:string; reference_id:string; description:string };
+export type JournalEntryUpdate = Partial<JournalEntryRow>;
+export type JournalLineRow = { id:string; journal_entry_id:string; account_id:string; description:string; debit:number; credit:number };
+export type JournalLineInsert = Partial<JournalLineRow> & { journal_entry_id:string; account_id:string; description:string };
+export type JournalLineUpdate = Partial<JournalLineRow>;
+export type VendorRow = { id:string; organization_id:string; code:string; name:string; contact_name:string|null; email:string|null; phone:string|null; address:string|null; is_active:boolean; created_at:string; };
+export type VendorInsert = Partial<VendorRow> & { organization_id:string; code:string; name:string };
+export type VendorUpdate = Partial<VendorRow>;
+export type PurchaseRow = { id:string; organization_id:string; purchase_number:string; vendor_id:string|null; vendor_name:string; purchase_date:string; due_date:string|null; status:string; payment_status:string; total_amount:number; paid_amount:number; notes:string|null; journal_entry_id:string|null; received_at:string|null; created_by:string|null; created_at:string; updated_at:string; purchase_items?:PurchaseItemRow[]; purchase_payments?:PurchasePaymentRow[] };
+export type PurchaseInsert = Partial<PurchaseRow> & { organization_id:string; purchase_number:string; vendor_name:string; purchase_date:string };
+export type PurchaseUpdate = Partial<PurchaseRow>;
+export type PurchaseItemRow = { id:string; organization_id:string; purchase_id:string; product_id:string; product_name:string; quantity:number; unit_cost:number; line_total:number };
+export type PurchaseItemInsert = Partial<PurchaseItemRow> & { purchase_id:string; product_id:string; product_name:string; quantity:number; unit_cost:number; line_total:number };
+export type PurchaseItemUpdate = Partial<PurchaseItemRow>;
+export type PurchasePaymentRow = { id:string; organization_id:string; purchase_id:string; payment_date:string; amount:number; payment_account_id:string; reference_number:string|null; notes:string|null; journal_entry_id:string|null; created_by:string|null; created_at:string; idempotency_key?:string|null };
+export type PurchasePaymentInsert = Partial<PurchasePaymentRow> & { organization_id:string; purchase_id:string; payment_date:string; amount:number; payment_account_id:string };
+export type PurchasePaymentUpdate = Partial<PurchasePaymentRow>;
+
 /**
  * 2.4 Products / Services Master Table
  */
@@ -451,6 +504,10 @@ export type ProductRow = {
   price: number;
   tax_rate: number;
   is_active: boolean;
+  track_inventory: boolean;
+  cost_price: number;
+  min_stock: number;
+  stock_qty: number;
   created_at: string;
   updated_at: string;
 };
@@ -466,6 +523,10 @@ export type ProductInsert = {
   price?: number;
   tax_rate?: number;
   is_active?: boolean;
+  track_inventory?: boolean;
+  cost_price?: number;
+  min_stock?: number;
+  stock_qty?: number;
   created_at?: string;
   updated_at?: string;
 };
@@ -481,6 +542,10 @@ export type ProductUpdate = {
   price?: number;
   tax_rate?: number;
   is_active?: boolean;
+  track_inventory?: boolean;
+  cost_price?: number;
+  min_stock?: number;
+  stock_qty?: number;
   created_at?: string;
   updated_at?: string;
 };
@@ -871,7 +936,10 @@ export type DbAuditModule =
   | 'auth'
   | 'reconciliation'
   | 'documents'
-  | 'business_documents';
+  | 'business_documents'
+  | 'expenses'
+  | 'vendors'
+  | 'purchases';
 
 /**
  * 2.11 Audit Logs Table

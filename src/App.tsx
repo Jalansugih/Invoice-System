@@ -21,17 +21,18 @@ import { BillingLetterPrintView } from './components/letters/BillingLetterPrintV
 import { PaymentList } from './components/payments/PaymentList';
 import { PaymentModal } from './components/payments/PaymentModal';
 import { ReceiptPrintView } from './components/payments/ReceiptPrintView';
-import { BankReconciliationView } from './components/reconciliation/BankReconciliationView';
-import { TaxReportsView } from './components/tax/TaxReportsView';
 import { DocumentHub } from './components/documents/DocumentHub';
 import { BusinessDocumentsView } from './components/business/BusinessDocumentsView';
 import { FinancialReportsView } from './components/reports/FinancialReportsView';
+import { PaymentGatewayView } from './components/payments/PaymentGatewayView';
 import { AuditTrailView } from './components/audit/AuditTrailView';
 import { SettingsView } from './components/settings/SettingsView';
+import { ExpenseList } from './components/expenses/ExpenseList';
+import { PurchaseList } from './components/purchases/PurchaseList';
 import { UserGuideModal } from './components/guide/UserGuideModal';
 
 export default function App() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
   
   // Read initial route from window.location.pathname
   const getInitialTabFromUrl = (): string => {
@@ -43,19 +44,18 @@ export default function App() {
       'customers',
       'products',
       'payments',
+      'expenses',
+      'purchases',
       'letters',
       'billing_letters',
-      'reconciliation',
-      'tax',
-      'tax_reports',
       'documents',
       'business_documents',
+      'payment_gateway',
       'reports',
       'audit',
       'settings',
     ];
     if (path === 'letters') return 'billing_letters';
-    if (path === 'tax') return 'tax_reports';
     if (validTabs.includes(path)) return path;
     return 'dashboard';
   };
@@ -336,37 +336,19 @@ export default function App() {
                   />
                 )}
 
+                {currentTab === 'expenses' && <ExpenseList />}
+                {currentTab === 'purchases' && <PurchaseList />}
+
                 {currentTab === 'payments' && (
                   <PaymentList
                     onViewReceipt={(p) => setViewingReceiptPayment(p)}
                     onCreateNewPayment={() => handleQuickAction('new_payment')}
-                    onNavigateReconciliation={() => setCurrentTab('reconciliation')}
-                  />
-                )}
-
-                {currentTab === 'reconciliation' && (
-                  <BankReconciliationView
-                    onViewInvoice={(id) => {
-                      setCurrentTab('invoices');
-                      setViewingInvoiceId(id);
-                    }}
-                    onViewReceipt={(p) => {
-                      setCurrentTab('payments');
-                      setViewingReceiptPayment(p);
-                    }}
-                  />
-                )}
-
-                {currentTab === 'tax_reports' && (
-                  <TaxReportsView
-                    onViewSourceInvoice={(id) => {
-                      setCurrentTab('invoices');
-                      setViewingInvoiceId(id);
-                    }}
                   />
                 )}
 
                 {currentTab === 'business_documents' && <BusinessDocumentsView />}
+
+                {currentTab === 'payment_gateway' && <PaymentGatewayView />}
 
                 {currentTab === 'documents' && (
                   <DocumentHub

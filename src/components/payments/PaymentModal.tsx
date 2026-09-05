@@ -120,10 +120,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       title={
         <div className="flex items-center gap-2">
           <CreditCard className="w-5 h-5 text-emerald-600" />
-          <span>Catat Penerimaan Pembayaran (Kuitansi Kas Masuk)</span>
+          <span>Catat Pembayaran</span>
         </div>
       }
-      subtitle="Otomatis memperbarui sisa piutang, status lunas, dan mencetak bukti kuitansi resmi"
+      subtitle="Pilih invoice → masukkan nominal → simpan. Jurnal kas/bank dan piutang dibuat otomatis."
       maxWidth="xl"
       footer={
         <>
@@ -193,13 +193,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               >
                 Bayar Lunas (100%)
               </button>
-              <button
-                type="button"
-                onClick={() => handleQuickAmount('half')}
-                className="text-[11px] font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded border border-slate-200"
-              >
-                Bayar 50%
-              </button>
+
             </div>
           </div>
           <Input
@@ -234,30 +228,35 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           </Select>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Select
-            label="Rekening Bank Penerima"
-            value={bankAccountId}
-            onChange={(e) => setBankAccountId(e.target.value)}
-          >
-            {org.bankAccounts.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.bankName} - {b.accountNumber}
-              </option>
-            ))}
-          </Select>
+        {paymentMethod !== 'cash' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label="Rekening Penerima"
+              value={bankAccountId}
+              onChange={(e) => setBankAccountId(e.target.value)}
+              required
+            >
+              {org.bankAccounts.length === 0 && <option value="">Belum ada rekening</option>}
+              {org.bankAccounts.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.bankName} - {b.accountNumber}
+                </option>
+              ))}
+            </Select>
 
-          <Input
-            label="No. Referensi / No. Bukti Transfer"
-            placeholder="e.g. TRX-99281 / Slip Setoran"
-            value={referenceNumber}
-            onChange={(e) => setReferenceNumber(e.target.value)}
-          />
-        </div>
+            <Input
+              label="No. Referensi"
+              placeholder="TRX-99281 / bukti transfer"
+              value={referenceNumber}
+              onChange={(e) => setReferenceNumber(e.target.value)}
+            />
+          </div>
+        )}
 
         <div>
           <Input
-            label="Catatan / Keterangan Pembayaran"
+            label="Catatan"
+            placeholder="Opsional"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />

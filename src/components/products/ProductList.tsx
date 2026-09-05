@@ -8,7 +8,7 @@ import { Badge } from '../ui/Badge';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { ProductModal } from './ProductModal';
 import { ProductImportModal } from './ProductImportModal';
-import { Package, Search, Plus, Download, Upload, Edit2, Trash2, Tag } from 'lucide-react';
+import { Package, Search, Plus, Download, Upload, Edit2, Trash2, Tag, Boxes, ArrowDownUp, ArrowDownToLine } from 'lucide-react';
 
 export const ProductList: React.FC = () => {
   const [products, setProducts] = useState(StorageService.getProducts());
@@ -19,9 +19,37 @@ export const ProductList: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [stockTarget, setStockTarget] = useState<Product | null>(null);
+  const [stockDelta, setStockDelta] = useState(0);
+  const [stockNote, setStockNote] = useState('');
+  const [stockBusy, setStockBusy] = useState(false);
+  const [receiptTarget, setReceiptTarget] = useState<Product | null>(null);
+  const [receiptQty, setReceiptQty] = useState(0);
+  const [receiptCost, setReceiptCost] = useState(0);
+  const [receiptType, setReceiptType] = useState<'OPENING'|'PURCHASE'|'RETURN_IN'|'ADJUSTMENT_IN'>('PURCHASE');
+  const [receiptNote, setReceiptNote] = useState('');
+  const [receiptBusy, setReceiptBusy] = useState(false);
 
   const refreshData = () => {
     setProducts(StorageService.getProducts());
+  };
+
+  const saveStockAdjustment = async () => {
+    if (!stockTarget || !stockDelta) return;
+    setStockBusy(true);
+    try {
+      await StorageService.adjustProductStock(stockTarget.id, stockDelta, stockNote || (stockDelta > 0 ? 'Penerimaan stok' : 'Pengeluaran stok'));
+      setStockTarget(null); setStockDelta(0); setStockNote(''); refreshData();
+    } catch (e: any) { alert(e?.message || 'Gagal memperbarui stok'); } finally { setStockBusy(false); }
+  };
+
+  const saveInventoryReceipt = async () => {
+    if (!receiptTarget || receiptQty <= 0) return;
+    setReceiptBusy(true);
+    try {
+      await StorageService.recordInventoryReceipt({ productId: receiptTarget.id, quantity: receiptQty, unitCost: receiptCost, movementType: receiptType, notes: receiptNote });
+      setReceiptTarget(null); setReceiptQty(0); setReceiptCost(0); setReceiptNote(''); setReceiptType('PURCHASE'); refreshData();
+    } catch (e: any) { alert(e?.message || 'Gagal mencatat stok masuk'); } finally { setReceiptBusy(false); }
   };
 
   const categories = useMemo(() => {
@@ -152,6 +180,7 @@ export const ProductList: React.FC = () => {
                 <th className="py-3 px-4">Kategori</th>
                 <th className="py-3 px-4">Satuan</th>
                 <th className="py-3 px-4 text-right">Harga Satuan (IDR)</th>
+                <th className="py-3 px-4 text-center">Stok</th>
                 <th className="py-3 px-4 text-center">Pajak (PPN)</th>
                 <th className="py-3 px-4 text-center">Status</th>
                 <th className="py-3 px-4 text-right">Aksi</th>
@@ -160,7 +189,7 @@ export const ProductList: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-400">
+                  <td colSpan={8} className="py-10 text-center text-slate-400">
                     Tidak ada item produk/jasa yang cocok dengan kriteria.
                   </td>
                 </tr>
@@ -190,6 +219,14 @@ export const ProductList: React.FC = () => {
                       {formatRupiah(prd.price)}
                     </td>
 
+                    <td className="py-3 px-4 text-center">
+                      {prd.trackInventory ? (
+                        <button onClick={() => { setStockTarget(prd); setStockDelta(0); setStockNote(''); }} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold ${(prd.stockQty ?? 0) <= (prd.minStock ?? 0) ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                          <Boxes className="w-3 h-3" /> {prd.stockQty ?? 0} {prd.unit}
+                        </button>
+                      ) : <span className="text-[10px] text-slate-400">Non-stok</span>}
+                    </td>
+
                     <td className="py-3 px-4 text-center font-semibold text-slate-700">
                       {prd.taxRate}%
                     </td>
@@ -202,6 +239,11 @@ export const ProductList: React.FC = () => {
 
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {prd.trackInventory && (
+                          <button onClick={() => { setReceiptTarget(prd); setReceiptQty(0); setReceiptCost(prd.costPrice ?? 0); setReceiptType('PURCHASE'); setReceiptNote(''); }} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors" title="Stok Masuk">
+                            <ArrowDownToLine className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setProductToEdit(prd);
@@ -246,6 +288,44 @@ export const ProductList: React.FC = () => {
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => refreshData()}
       />
+
+      {receiptTarget && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-5">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2"><ArrowDownToLine className="w-4 h-4" /> Stok Masuk & HPP</h3>
+            <p className="text-xs text-slate-500 mt-1">{receiptTarget.name} • stok {receiptTarget.stockQty ?? 0} {receiptTarget.unit} • HPP saat ini {formatRupiah(receiptTarget.costPrice ?? 0)}</p>
+            <div className="grid grid-cols-2 gap-3 mt-5">
+              <Input label="Jumlah Masuk" type="number" min={0} value={receiptQty} onChange={e => setReceiptQty(Number(e.target.value))} />
+              <Input label="Harga Pokok / Unit" type="number" min={0} value={receiptCost} onChange={e => setReceiptCost(Number(e.target.value))} />
+            </div>
+            <div className="mt-3">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Jenis Stok Masuk</label>
+              <select value={receiptType} onChange={e => setReceiptType(e.target.value as any)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs">
+                <option value="PURCHASE">Pembelian</option><option value="OPENING">Saldo Awal</option><option value="RETURN_IN">Retur Penjualan</option><option value="ADJUSTMENT_IN">Penyesuaian Masuk</option>
+              </select>
+            </div>
+            <div className="mt-3"><Input label="Catatan" placeholder="Contoh: pembelian vendor / saldo awal" value={receiptNote} onChange={e => setReceiptNote(e.target.value)} /></div>
+            <div className="flex justify-end gap-2 mt-5"><Button variant="outline" size="sm" onClick={() => setReceiptTarget(null)}>Batal</Button><Button size="sm" disabled={!receiptQty || receiptBusy} isLoading={receiptBusy} onClick={saveInventoryReceipt}>Simpan Stok Masuk</Button></div>
+          </div>
+        </div>
+      )}
+
+      {stockTarget && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div><h3 className="font-bold text-slate-900 flex items-center gap-2"><ArrowDownUp className="w-4 h-4" /> Penyesuaian Stok</h3><p className="text-xs text-slate-500 mt-1">{stockTarget.name} • stok saat ini {stockTarget.stockQty ?? 0} {stockTarget.unit}</p></div>
+              <button onClick={() => setStockTarget(null)} className="text-slate-400 hover:text-slate-700">×</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-5">
+              <Input label="Perubahan (+ / -)" type="number" value={stockDelta} onChange={e => setStockDelta(Number(e.target.value))} />
+              <Input label="Stok setelah" type="number" value={Math.max(0, (stockTarget.stockQty ?? 0) + (stockDelta || 0))} readOnly />
+            </div>
+            <Input label="Catatan" placeholder="Contoh: pembelian dari vendor / stok rusak" value={stockNote} onChange={e => setStockNote(e.target.value)} />
+            <div className="flex justify-end gap-2 mt-5"><Button variant="outline" size="sm" onClick={() => setStockTarget(null)}>Batal</Button><Button size="sm" disabled={!stockDelta || stockBusy} isLoading={stockBusy} onClick={saveStockAdjustment}>Simpan Penyesuaian</Button></div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation */}
       <ConfirmDialog

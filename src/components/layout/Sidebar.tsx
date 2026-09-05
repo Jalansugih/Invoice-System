@@ -6,7 +6,9 @@ import {
   FileText,
   Mail,
   CreditCard,
-  Landmark,
+  Wallet,
+  Truck,
+  Link as LinkIcon,
   FolderOpen,
   BarChart3,
   Settings,
@@ -78,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
         {
           id: 'products',
-          label: 'Produk & Jasa',
+          label: 'Produk & Inventaris',
           icon: Package,
         },
         {
@@ -104,12 +106,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: 'Penerimaan Kas',
           icon: CreditCard,
         },
+        { id: 'purchases', label: 'Pembelian & Vendor', icon: Truck },
         {
-          id: 'reconciliation',
-          label: 'Rekonsiliasi Bank',
-          icon: Landmark,
-          badge: 'Bank Feed',
-          badgeVariant: 'success',
+          id: 'expenses',
+          label: 'Pengeluaran',
+          icon: Wallet,
+        },
+        {
+          id: 'payment_gateway',
+          label: 'Payment Gateway',
+          icon: LinkIcon,
+          badge: 'Online',
+          badgeVariant: 'info',
         },
         {
           id: 'documents',
@@ -119,15 +127,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
-      groupTitle: 'Pajak & Laporan',
+      groupTitle: 'Laporan & Kontrol',
       items: [
-        {
-          id: 'tax_reports',
-          label: 'Laporan Pajak (DJP)',
-          icon: Receipt,
-          badge: 'PPh & PPN',
-          badgeVariant: 'info',
-        },
         {
           id: 'reports',
           label: 'Laporan Keuangan',
@@ -138,11 +139,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: 'Jejak Audit Sistem',
           icon: History,
         },
-      ],
-    },
-    {
-      groupTitle: 'Sistem',
-      items: [
         {
           id: 'settings',
           label: 'Pengaturan & DB',
