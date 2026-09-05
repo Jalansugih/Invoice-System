@@ -189,9 +189,11 @@
     -webkit-print-color-adjust: exact !important;
   }
 
-  /* Prevent awkward page breaks in critical document sections */
+  /* Prevent awkward page breaks inside a single row/section, while still
+     allowing long tables (e.g. laporan neraca / buku besar) to flow across
+     multiple A4 pages. Note: `table` itself must NOT be in this list — that
+     would stop a tall table from ever splitting across pages. */
   .avoid-page-break,
-  table,
   tr,
   td,
   th,
@@ -202,10 +204,21 @@
     break-inside: avoid !important;
   }
 
-  /* Table borders high-contrast for paper */
+  /* Table borders high-contrast for paper, and repeat the header row on
+     every printed page for long, multi-page tables. */
   table {
     width: 100% !important;
     border-collapse: collapse !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
   }
 
   /* Remove all shadows and rounded corners on print */
@@ -261,17 +274,6 @@
     break-after: avoid;
     page-break-after: avoid;
   }
-}
-
-/* Business document print standard */
-@media print {
-  @page { size: A4 portrait; margin: 0; }
-  body { background: #fff !important; }
-  .print\:hidden { display: none !important; }
-  table { break-inside: auto; }
-  tr, img, .signature-block { break-inside: avoid; }
-  thead { display: table-header-group; }
-  tfoot { display: table-footer-group; }
 }
 
 .business-document-sheet { width: 210mm; min-height: 297mm; margin: 0 auto; }

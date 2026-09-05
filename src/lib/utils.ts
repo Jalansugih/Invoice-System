@@ -247,8 +247,15 @@ export function parseCSV(text: string): Record<string, string>[] {
  * Menggunakan print window terisolasi agar sidebar, navbar, filter, modal,
  * dan komponen lain di layar tidak ikut tercetak.
  */
-export function printElement(elementId: string, title = 'Dokumen'): void {
+export interface PrintDocumentOptions {
+  paper?: 'A4' | 'F4';
+  orientation?: 'portrait' | 'landscape';
+}
+
+export function printElement(elementId: string, title = 'Dokumen', options: PrintDocumentOptions = {}): void {
   const source = document.getElementById(elementId);
+  const paper = options.paper || 'A4';
+  const orientation = options.orientation || 'portrait';
   if (!source) {
     console.error(`[printElement] Elemen #${elementId} tidak ditemukan.`);
     return;
@@ -276,13 +283,15 @@ export function printElement(elementId: string, title = 'Dokumen'): void {
 <title>${title.replace(/[<>]/g, '')}</title>
 ${styles}
 <style>
-  @page { size: A4 portrait; margin: 10mm 12mm; }
+  @page { size: ${paper === 'F4' ? (orientation === 'landscape' ? '330mm 215mm' : '215mm 330mm') : (orientation === 'landscape' ? '297mm 210mm' : '210mm 297mm')}; margin: 10mm 12mm; }
   html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
   body { color: #0f172a; font-size: 11pt; line-height: 1.4; }
   #__print_document__ { display: block !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; background: #fff !important; box-shadow: none !important; border: 0 !important; }
   #__print_document__ * { visibility: visible !important; }
   button, input, select, textarea, .print\\:hidden, .no-print, [data-print-hide] { display: none !important; }
-  table { width: 100%; border-collapse: collapse; }
+  table { width: 100%; border-collapse: collapse; break-inside: auto; page-break-inside: auto; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
   tr, td, th, .avoid-page-break { break-inside: avoid; page-break-inside: avoid; }
   * { box-shadow: none !important; text-shadow: none !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 </style>
@@ -291,7 +300,19 @@ ${styles}
 <div id="__print_document__">${clone.outerHTML}</div>
 <script>
   window.addEventListener('load', function () {
-    setTimeout(function () { window.focus(); window.print(); }, 250);
+    var imgs = Array.prototype.slice.call(document.images);
+    var pending = imgs.filter(function (img) { return !img.complete; });
+    var whenReady = pending.length
+      ? Promise.all(pending.map(function (img) {
+          return new Promise(function (resolve) {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+          });
+        }))
+      : Promise.resolve();
+    whenReady.then(function () {
+      setTimeout(function () { window.focus(); window.print(); }, 250);
+    });
   });
 </script>
 </body>

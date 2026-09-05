@@ -30,6 +30,9 @@ import { SettingsView } from './components/settings/SettingsView';
 import { ExpenseList } from './components/expenses/ExpenseList';
 import { PurchaseList } from './components/purchases/PurchaseList';
 import { UserGuideModal } from './components/guide/UserGuideModal';
+import { FeaturePlaceholderView } from './components/common/FeaturePlaceholderView';
+import { CashBankView } from './components/cashbank/CashBankView';
+import { ChartOfAccountsView } from './components/accounting/ChartOfAccountsView';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -38,26 +41,23 @@ export default function App() {
   const getInitialTabFromUrl = (): string => {
     if (typeof window === 'undefined') return 'dashboard';
     const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
-    const validTabs = [
-      'dashboard',
-      'invoices',
-      'customers',
-      'products',
-      'payments',
-      'expenses',
-      'purchases',
-      'letters',
-      'billing_letters',
-      'documents',
-      'business_documents',
-      'payment_gateway',
-      'reports',
-      'audit',
-      'settings',
-    ];
-    if (path === 'letters') return 'billing_letters';
-    if (validTabs.includes(path)) return path;
-    return 'dashboard';
+    const routeMap: Record<string, string> = {
+      '': 'dashboard',
+      'dashboard': 'dashboard',
+      'invoices': 'invoices', 'sales': 'invoices', 'customers': 'customers', 'products': 'products',
+      'payments': 'payments', 'expenses': 'expenses', 'purchases': 'purchases',
+      'letters': 'billing_letters', 'billing_letters': 'billing_letters', 'documents': 'documents',
+      'business_documents': 'business_documents', 'payment_gateway': 'payment_gateway', 'audit': 'audit',
+      'settings': 'settings', 'suppliers': 'suppliers', 'coa': 'coa',
+      'cash-bank': 'cash_bank', 'inventory': 'inventory',
+      'users-access': 'users_access', 'settings/company': 'settings_company', 'settings/tax': 'settings_tax',
+      'settings/integrations': 'settings_integrations', 'settings/backup': 'settings_backup',
+      'reports': 'report_summary', 'reports/summary': 'report_summary', 'reports/profit-loss': 'report_profit_loss',
+      'reports/balance-sheet': 'report_balance_sheet', 'reports/cash-flow': 'report_cash_flow',
+      'reports/general-ledger': 'report_general_ledger', 'reports/tax': 'report_tax', 'reports/stock': 'report_stock',
+    };
+    if (path === 'login' || path === 'auth') return 'dashboard';
+    return routeMap[path] || 'dashboard';
   };
 
   const [currentTab, setCurrentTab] = useState<string>(getInitialTabFromUrl);
@@ -116,7 +116,16 @@ export default function App() {
     setViewingReceiptPayment(null);
 
     try {
-      const targetUrl = tab === 'dashboard' ? '/' : `/${tab}`;
+      const routeMap: Record<string, string> = {
+        dashboard: '/', suppliers: '/suppliers', coa: '/coa',
+        cash_bank: '/cash-bank', inventory: '/inventory',
+        users_access: '/users-access', settings_company: '/settings/company', settings_tax: '/settings/tax',
+        settings_integrations: '/settings/integrations', settings_backup: '/settings/backup',
+        report_summary: '/reports/summary', report_profit_loss: '/reports/profit-loss',
+        report_balance_sheet: '/reports/balance-sheet', report_cash_flow: '/reports/cash-flow',
+        report_general_ledger: '/reports/general-ledger', report_tax: '/reports/tax', report_stock: '/reports/stock',
+      };
+      const targetUrl = routeMap[tab] || `/${tab}`;
       if (window.location.pathname !== targetUrl) {
         window.history.pushState({ tab }, '', targetUrl);
       }
@@ -367,11 +376,23 @@ export default function App() {
                   />
                 )}
 
-                {currentTab === 'reports' && <FinancialReportsView />}
+                {currentTab === 'reports' && <FinancialReportsView initialReport="summary" />}
+                {currentTab === 'report_summary' && <FinancialReportsView initialReport="summary" />}
+                {currentTab === 'report_profit_loss' && <FinancialReportsView initialReport="profitLoss" />}
+                {currentTab === 'report_balance_sheet' && <FinancialReportsView initialReport="balanceSheet" />}
+                {currentTab === 'report_cash_flow' && <FinancialReportsView initialReport="cashFlow" />}
+                {currentTab === 'report_general_ledger' && <FinancialReportsView initialReport="generalLedger" />}
+                {currentTab === 'report_tax' && <FinancialReportsView initialReport="tax" />}
+                {currentTab === 'report_stock' && <FinancialReportsView initialReport="stock" />}
 
                 {currentTab === 'audit' && <AuditTrailView />}
 
-                {currentTab === 'settings' && <SettingsView />}
+                {['settings', 'settings_company', 'settings_tax', 'settings_integrations', 'settings_backup'].includes(currentTab) && <SettingsView />}
+                {currentTab === 'suppliers' && <FeaturePlaceholderView title="Supplier / Vendor" description="Menu sudah disiapkan dalam struktur baru. Modul supplier/vendor dapat dikembangkan tanpa mengganggu transaksi pembelian yang sudah berjalan." onBack={() => handleSelectTab('purchases')} />}
+                {currentTab === 'coa' && <ChartOfAccountsView />}
+                                {currentTab === 'cash_bank' && <CashBankView />}
+                {currentTab === 'inventory' && <FeaturePlaceholderView title="Persediaan (Stok)" description="Inventory engine existing tetap dipertahankan. Gunakan Laporan Stok untuk ringkasan sementara." onBack={() => handleSelectTab('report_stock')} />}
+                {currentTab === 'users_access' && <FeaturePlaceholderView title="Pengguna & Hak Akses" description="Pengaturan role dan keamanan existing tetap aktif. Halaman khusus pengelolaan pengguna dapat ditambahkan tanpa mengubah RLS." onBack={() => handleSelectTab('dashboard')} />}
               </>
             )}
           </div>

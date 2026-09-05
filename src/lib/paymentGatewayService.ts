@@ -1,4 +1,5 @@
 import { Invoice } from '../types';
+import { supabase } from './supabase';
 
 export interface PaymentGatewayConfig {
   provider: string;
@@ -23,7 +24,7 @@ export interface PaymentLinkResult {
  */
 export class PaymentGatewayService {
   static getConfig(): PaymentGatewayConfig {
-    const apiBaseUrl = (import.meta.env.VITE_PAYMENT_GATEWAY_API_URL || '').trim();
+    const apiBaseUrl = (import.meta.env.VITE_PAYMENT_GATEWAY_API_URL || '/api').trim();
     const provider = (import.meta.env.VITE_PAYMENT_GATEWAY_PROVIDER || 'midtrans').trim();
     const publicKey = (import.meta.env.VITE_PAYMENT_GATEWAY_PUBLIC_KEY || '').trim() || undefined;
     return { provider, apiBaseUrl, publicKey, enabled: Boolean(apiBaseUrl) };
@@ -37,9 +38,12 @@ export class PaymentGatewayService {
       );
     }
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new Error('Sesi login tidak tersedia. Silakan login kembali.');
     const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, '')}/payment-links`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
       credentials: 'include',
       body: JSON.stringify({
         invoiceId: invoice.id,

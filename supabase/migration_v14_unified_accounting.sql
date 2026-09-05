@@ -696,33 +696,39 @@ BEGIN
   RETURN jsonb_build_object(
     'period',jsonb_build_object('startDate',v_start,'endDate',v_end),
     'profitLoss',jsonb_build_object(
-      'revenue',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',a.code,'name',a.name,'accountType',a.account_type,'amount',round(sum(jl.credit-jl.debit),2)) ORDER BY a.code)
-        FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
-        WHERE a.organization_id=v_org AND a.account_type='REVENUE' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date BETWEEN v_start AND v_end
-        GROUP BY a.code,a.name,a.account_type),'[]'::jsonb),
-      'cogs',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',a.code,'name',a.name,'accountType',a.account_type,'amount',round(sum(jl.debit-jl.credit),2)) ORDER BY a.code)
-        FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
-        WHERE a.organization_id=v_org AND a.account_type='COGS' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date BETWEEN v_start AND v_end
-        GROUP BY a.code,a.name,a.account_type),'[]'::jsonb),
-      'expenses',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',a.code,'name',a.name,'accountType',a.account_type,'amount',round(sum(jl.debit-jl.credit),2)) ORDER BY a.code)
-        FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
-        WHERE a.organization_id=v_org AND a.account_type='EXPENSE' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date BETWEEN v_start AND v_end
-        GROUP BY a.code,a.name,a.account_type),'[]'::jsonb),
+      'revenue',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',x.code,'name',x.name,'accountType',x.account_type,'amount',x.amount) ORDER BY x.code)
+        FROM (SELECT a.code,a.name,a.account_type,round(sum(jl.credit-jl.debit),2) AS amount
+              FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
+              WHERE a.organization_id=v_org AND a.account_type='REVENUE' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date BETWEEN v_start AND v_end
+              GROUP BY a.code,a.name,a.account_type) x),'[]'::jsonb),
+      'cogs',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',x.code,'name',x.name,'accountType',x.account_type,'amount',x.amount) ORDER BY x.code)
+        FROM (SELECT a.code,a.name,a.account_type,round(sum(jl.debit-jl.credit),2) AS amount
+              FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
+              WHERE a.organization_id=v_org AND a.account_type='COGS' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date BETWEEN v_start AND v_end
+              GROUP BY a.code,a.name,a.account_type) x),'[]'::jsonb),
+      'expenses',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',x.code,'name',x.name,'accountType',x.account_type,'amount',x.amount) ORDER BY x.code)
+        FROM (SELECT a.code,a.name,a.account_type,round(sum(jl.debit-jl.credit),2) AS amount
+              FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
+              WHERE a.organization_id=v_org AND a.account_type='EXPENSE' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date BETWEEN v_start AND v_end
+              GROUP BY a.code,a.name,a.account_type) x),'[]'::jsonb),
       'totalRevenue',round(v_total_revenue,2),'totalCogs',round(v_total_cogs,2),'totalExpenses',round(v_total_expenses,2),'netProfit',round(v_net_profit,2)
     ),
     'balanceSheet',jsonb_build_object(
-      'assets',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',a.code,'name',a.name,'accountType',a.account_type,'amount',round(sum(CASE WHEN a.normal_balance='DEBIT' THEN jl.debit-jl.credit ELSE jl.credit-jl.debit END),2)) ORDER BY a.code)
-        FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
-        WHERE a.organization_id=v_org AND a.account_type='ASSET' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date<=v_end
-        GROUP BY a.code,a.name,a.account_type,a.normal_balance),'[]'::jsonb),
-      'liabilities',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',a.code,'name',a.name,'accountType',a.account_type,'amount',round(sum(CASE WHEN a.normal_balance='DEBIT' THEN jl.debit-jl.credit ELSE jl.credit-jl.debit END),2)) ORDER BY a.code)
-        FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
-        WHERE a.organization_id=v_org AND a.account_type='LIABILITY' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date<=v_end
-        GROUP BY a.code,a.name,a.account_type,a.normal_balance),'[]'::jsonb),
-      'equity',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',a.code,'name',a.name,'accountType',a.account_type,'amount',round(sum(CASE WHEN a.normal_balance='DEBIT' THEN jl.debit-jl.credit ELSE jl.credit-jl.debit END),2)) ORDER BY a.code)
-        FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
-        WHERE a.organization_id=v_org AND a.account_type='EQUITY' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date<=v_end
-        GROUP BY a.code,a.name,a.account_type,a.normal_balance),'[]'::jsonb)
+      'assets',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',x.code,'name',x.name,'accountType',x.account_type,'amount',x.amount) ORDER BY x.code)
+        FROM (SELECT a.code,a.name,a.account_type,round(sum(CASE WHEN a.normal_balance='DEBIT' THEN jl.debit-jl.credit ELSE jl.credit-jl.debit END),2) AS amount
+              FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
+              WHERE a.organization_id=v_org AND a.account_type='ASSET' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date<=v_end
+              GROUP BY a.code,a.name,a.account_type,a.normal_balance) x),'[]'::jsonb),
+      'liabilities',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',x.code,'name',x.name,'accountType',x.account_type,'amount',x.amount) ORDER BY x.code)
+        FROM (SELECT a.code,a.name,a.account_type,round(sum(CASE WHEN a.normal_balance='DEBIT' THEN jl.debit-jl.credit ELSE jl.credit-jl.debit END),2) AS amount
+              FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
+              WHERE a.organization_id=v_org AND a.account_type='LIABILITY' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date<=v_end
+              GROUP BY a.code,a.name,a.account_type,a.normal_balance) x),'[]'::jsonb),
+      'equity',COALESCE((SELECT jsonb_agg(jsonb_build_object('code',x.code,'name',x.name,'accountType',x.account_type,'amount',x.amount) ORDER BY x.code)
+        FROM (SELECT a.code,a.name,a.account_type,round(sum(CASE WHEN a.normal_balance='DEBIT' THEN jl.debit-jl.credit ELSE jl.credit-jl.debit END),2) AS amount
+              FROM public.accounts a JOIN public.journal_lines jl ON jl.account_id=a.id JOIN public.journal_entries je ON je.id=jl.journal_entry_id
+              WHERE a.organization_id=v_org AND a.account_type='EQUITY' AND je.organization_id=v_org AND je.status='POSTED' AND je.journal_date<=v_end
+              GROUP BY a.code,a.name,a.account_type,a.normal_balance) x),'[]'::jsonb)
         || jsonb_build_array(jsonb_build_object('code','3-9999','name','Laba Ditahan / Laba Berjalan','accountType','EQUITY','amount',round(v_cumulative_profit,2))),
       'totalAssets',round(v_total_assets,2),'totalLiabilities',round(v_total_liabilities,2),
       'totalEquity',round(v_total_equity+v_cumulative_profit,2),

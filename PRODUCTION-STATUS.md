@@ -23,3 +23,7 @@ This package has been hardened for a Vercel + Supabase production deployment.
 6. Tax-specific records and bank reconciliation are still partly localStorage-backed in this version. Those modules require their dedicated Supabase persistence layer before being considered fully production-authoritative.
 
 The code was statically audited in this environment. A complete `npm run build` could not be executed here because the uploaded archive does not include `node_modules` and dependency installation exceeded the execution environment timeout. Run the build in the project/Vercel environment after setting the variables.
+
+## v24 — Atomic Invoice Creation
+
+Added `supabase/migration_v24_atomic_invoice.sql`. New invoice creation uses the `create_invoice_atomic()` RPC so invoice header, invoice items, accounting journal, customer aggregates, and audit log commit or roll back together.

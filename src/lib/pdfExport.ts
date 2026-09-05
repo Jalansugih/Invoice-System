@@ -8,6 +8,8 @@ export interface ExportPdfOptions {
   onProgress?: (progress: boolean) => void;
   marginMm?: number;
   addPageNumbers?: boolean;
+  paper?: 'A4' | 'F4';
+  orientation?: 'portrait' | 'landscape';
 }
 
 /**
@@ -25,6 +27,8 @@ export async function exportElementToPdf(options: ExportPdfOptions): Promise<voi
     onProgress,
     marginMm = 10,
     addPageNumbers = true,
+    paper = 'A4',
+    orientation = 'portrait',
   } = options;
 
   onProgress?.(true);
@@ -47,9 +51,9 @@ export async function exportElementToPdf(options: ExportPdfOptions): Promise<voi
     });
 
     const pdf = new jsPDF({
-      orientation: 'portrait',
+      orientation,
       unit: 'mm',
-      format: 'a4',
+      format: paper.toLowerCase() === 'f4' ? [215, 330] : 'a4',
       compress: true,
     });
 

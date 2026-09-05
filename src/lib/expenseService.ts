@@ -3,7 +3,10 @@ import { generateId, StorageService } from './storage';
 import { Account, Expense, ExpenseItem, ExpensePayment, ExpensePaymentStatus } from '../types';
 
 const EXPENSE_STORAGE_KEY = 'billingflow_expenses';
-const ACCOUNT_STORAGE_KEY = 'billingflow_accounts';
+// Exported so CoaService (the real COA management screen) reads/writes the
+// exact same local-mode cache — an account created in COA must show up in
+// the Expense account dropdown and vice versa, in both Supabase and local/demo mode.
+export const ACCOUNT_STORAGE_KEY = 'billingflow_accounts';
 
 const DEFAULT_ACCOUNTS: Account[] = [
   { id: '00000000-0000-4000-8100-000000000101', code: '1-1000', name: 'Kas', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },

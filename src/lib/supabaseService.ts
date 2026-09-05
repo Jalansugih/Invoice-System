@@ -67,6 +67,53 @@ export class SupabaseService {
   }
 
   /**
+   * Creates a new invoice through ONE Postgres RPC. The RPC owns the complete
+   * header + line items + customer aggregate + audit + accounting trigger
+   * transaction. No client-side rollback/cleanup is attempted.
+   */
+  public static async createInvoiceAtomic(invoice: Invoice): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session) return false;
+
+      const { error } = await supabase.rpc('create_invoice_atomic' as any, {
+        p_invoice_id: invoice.id,
+        p_invoice_number: invoice.invoiceNumber,
+        p_customer_id: invoice.customerId,
+        p_issue_date: invoice.issueDate,
+        p_due_date: invoice.dueDate,
+        p_po_number: invoice.poNumber ?? null,
+        p_reference_number: invoice.referenceNumber ?? null,
+        p_notes: invoice.notes ?? null,
+        p_payment_terms: invoice.paymentTerms ?? null,
+        p_discount_type: invoice.discountType ?? 'fixed',
+        p_discount_value: invoice.discountValue ?? 0,
+        p_tax_rate: invoice.taxRate ?? 11,
+        p_additional_charges: invoice.additionalCharges ?? 0,
+        p_bank_account_id: invoice.bankAccountId ?? null,
+        p_status: invoice.status ?? 'draft',
+        p_items: (invoice.items || []).map((it) => ({
+          id: it.id,
+          productId: it.productId ?? null,
+          productCode: it.productCode ?? null,
+          description: it.description,
+          quantity: it.quantity,
+          unit: it.unit,
+          unitPrice: it.unitPrice,
+          discount: it.discount,
+          taxRate: it.taxRate,
+        })),
+      } as any);
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error('Supabase createInvoiceAtomic error:', e);
+      throw e;
+    }
+  }
+
+  /**
    * Records a payment as one atomic database transaction: inserts the
    * payment row, updates the invoice's paid/outstanding/status, archives
    * the kuitansi document, and writes the audit log entry - all inside a

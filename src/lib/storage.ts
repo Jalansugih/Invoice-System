@@ -19,6 +19,7 @@ import {
 } from '../types';
 import { formatDocNumber, getDaysOverdue } from './utils';
 import { SupabaseService } from './supabaseService';
+import { isSupabaseConfigured } from './supabase';
 
 /**
  * Generates a real UUID (v4) for any entity that will be persisted to Supabase.
@@ -1873,6 +1874,7 @@ export class StorageService {
     const org = this.getOrganization();
     const customer = this.getCustomerById(invoiceData.customerId);
     const sequences = this.getSequences();
+    let invoicePersistedAtomically = false;
 
     if (!customer) throw new Error('Customer tidak valid');
 
@@ -2001,6 +2003,16 @@ export class StorageService {
         bankAccountId: invoiceData.bankAccountId || org.bankAccounts[0]?.id,
       };
 
+      // Cloud-first hardening: when a real authenticated Supabase session is
+      // available, create the invoice through ONE Postgres RPC. Header, all
+      // items, customer aggregates, audit, and accounting journal are one
+      // database transaction. Do not fall back to a sequence of client-side
+      // INSERTs because that would reintroduce partial invoices.
+      if (isSupabaseConfigured) {
+        const atomicResult = await SupabaseService.createInvoiceAtomic(invoice);
+        invoicePersistedAtomically = atomicResult;
+      }
+
       invoices.unshift(invoice);
 
       // Create document entry
@@ -2029,7 +2041,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.INVOICES, invoices);
     this.recalculateCustomerBalances();
     if (invoice.status !== 'draft') this.applyLocalInvoiceInventory(invoice);
-    this.syncInvoiceToSupabase(invoice);
+    if (!invoicePersistedAtomically) this.syncInvoiceToSupabase(invoice);
     return invoice;
   }
 
