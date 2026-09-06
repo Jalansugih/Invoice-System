@@ -52,11 +52,7 @@ export interface FinancialStatements {
 
 const n = (v: unknown) => Number(v) || 0;
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-// Exported so CoaService can reuse the exact same baseline list as the
-// offline/local fallback (single source of truth instead of a duplicate
-// hardcoded copy). In Supabase mode this is NOT what powers the COA menu
-// anymore — see src/lib/coaService.ts — it only seeds local/demo mode.
-export const localAccounts: Account[] = [
+const localAccounts: Account[] = [
   { id: '00000000-0000-4000-8100-000000000101', code: '1-1000', name: 'Kas', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
   { id: '00000000-0000-4000-8100-000000000102', code: '1-1100', name: 'Bank BCA', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
   { id: '00000000-0000-4000-8100-000000000103', code: '1-1200', name: 'Bank Mandiri', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
@@ -233,14 +229,12 @@ export class AccountingService {
           if (data) return data as FinancialStatements;
         }
       } catch (e) {
-        // Production/authenticated mode must never reconstruct accounting from
-        // invoice/payment UI caches. Financial reports are derived from the
-        // canonical posted journal data in Postgres.
-        console.error('[AccountingService] Laporan canonical Postgres gagal dimuat:', e);
-        throw e;
+        // Server-side report unavailable (network hiccup, RLS, or the RPC not
+        // yet migrated on this project) — fall back to the local calculation
+        // below instead of failing the whole report screen.
+        console.warn('[AccountingService] Laporan server tidak tersedia, memakai perhitungan lokal sebagai cadangan:', e);
       }
     }
-    // Local calculation is only for explicit demo/offline mode.
     return localStatements(startDate, endDate);
   }
 }

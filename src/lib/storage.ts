@@ -19,7 +19,7 @@ import {
 } from '../types';
 import { formatDocNumber, getDaysOverdue } from './utils';
 import { SupabaseService } from './supabaseService';
-import { isSupabaseConfigured } from './supabase';
+import { calcLineAmount, calcInvoiceTotals } from './invoiceCalc';
 
 /**
  * Generates a real UUID (v4) for any entity that will be persisted to Supabase.
@@ -1874,37 +1874,54 @@ export class StorageService {
     const org = this.getOrganization();
     const customer = this.getCustomerById(invoiceData.customerId);
     const sequences = this.getSequences();
-    let invoicePersistedAtomically = false;
 
     if (!customer) throw new Error('Customer tidak valid');
 
-    // Recalculate totals. Tax is computed PER ITEM using each line's own
-    // taxRate (not a single invoice-wide rate) - this matters when an
-    // invoice mixes items with different PPN treatment (e.g. 11% standar
-    // vs 0% ekspor/non-PKP). The invoice-level discount is prorated across
-    // items by their share of the subtotal before each item's tax is applied.
-    const subtotal = invoiceData.items.reduce((sum, item) => sum + item.amount, 0);
-    const discountAmount =
-      invoiceData.discountType === 'percentage'
-        ? (subtotal * (invoiceData.discountValue || 0)) / 100
-        : invoiceData.discountValue || 0;
-    const taxableAmount = Math.max(0, subtotal - discountAmount);
+    // PENTING: jangan percaya item.amount yang dikirim pemanggil apa adanya
+    // (bisa saja berasal dari state yang sudah dimodifikasi / request yang
+    // dimanipulasi) — hitung ulang dari quantity x unitPrice - discount di
+    // sini, satu-satunya tempat yang benar-benar menyimpan data. Untuk item
+    // yang terhubung ke produk master, harga juga ditimpa dengan harga
+    // katalog terbaru supaya tidak bisa "diakali" dengan mengirim unitPrice
+    // custom untuk produk yang sama. (Proteksi setara juga ditegakkan ulang
+    // di level database oleh trigger pada migration_v22_invoice_integrity.sql
+    // untuk jalur yang menulis langsung ke Supabase.)
+    const products = this.getProducts();
+    const verifiedItems: InvoiceItem[] = invoiceData.items.map((item) => {
+      const masterProduct = item.productId ? products.find((p) => p.id === item.productId) : undefined;
+      const unitPrice = masterProduct ? masterProduct.price : Math.max(0, Number(item.unitPrice) || 0);
+      const quantity = Math.max(0, Number(item.quantity) || 0);
+      const discount = Math.max(0, Number(item.discount) || 0);
+      return {
+        ...item,
+        unitPrice,
+        quantity,
+        discount,
+        amount: calcLineAmount(quantity, unitPrice, discount),
+      };
+    });
 
-    let taxAmount = 0;
-    if (subtotal > 0) {
-      for (const item of invoiceData.items) {
-        const itemDiscountShare = discountAmount * (item.amount / subtotal);
-        const itemTaxable = Math.max(0, item.amount - itemDiscountShare);
-        taxAmount += (itemTaxable * (item.taxRate || 0)) / 100;
+    // Total dihitung lewat lib/invoiceCalc.ts (satu sumber rumus yang sama
+    // dipakai form InvoiceFormModal.tsx). Pajak dihitung PER ITEM memakai
+    // taxRate masing-masing baris (bukan satu tarif global) - ini penting
+    // saat invoice mencampur item dengan PPN berbeda (mis. 11% standar vs
+    // 0% ekspor/non-PKP). Diskon tingkat invoice diprorata ke tiap item
+    // sesuai porsi subtotalnya sebelum tarif pajak baris itu diterapkan.
+    const { subtotal, discountAmount, taxableAmount, taxAmount, grandTotal } = calcInvoiceTotals(
+      verifiedItems,
+      {
+        discountType: invoiceData.discountType === 'percentage' ? 'percentage' : 'fixed',
+        discountValue: invoiceData.discountValue || 0,
+        additionalCharges: invoiceData.additionalCharges || 0,
       }
-    }
+    );
 
     // invoice.taxRate stays a single summary number for display/reporting
     // (e.g. the "PPN (11%)" line on the printout): if every item shares the
     // same rate it's that rate; if rates are mixed, it's the effective
     // blended rate (taxAmount / taxableAmount) so grandTotal-related displays
     // that multiply taxableAmount * taxRate still land on the right figure.
-    const distinctItemRates = Array.from(new Set(invoiceData.items.map((i) => i.taxRate ?? 0)));
+    const distinctItemRates = Array.from(new Set(verifiedItems.map((i) => i.taxRate ?? 0)));
     const taxRate =
       distinctItemRates.length === 1
         ? distinctItemRates[0]
@@ -1915,7 +1932,7 @@ export class StorageService {
         : org.defaultTaxRate;
 
     const additionalCharges = invoiceData.additionalCharges || 0;
-    const grandTotal = taxableAmount + taxAmount + additionalCharges;
+    invoiceData = { ...invoiceData, items: verifiedItems };
 
     let invoice: Invoice;
 
@@ -2003,16 +2020,6 @@ export class StorageService {
         bankAccountId: invoiceData.bankAccountId || org.bankAccounts[0]?.id,
       };
 
-      // Cloud-first hardening: when a real authenticated Supabase session is
-      // available, create the invoice through ONE Postgres RPC. Header, all
-      // items, customer aggregates, audit, and accounting journal are one
-      // database transaction. Do not fall back to a sequence of client-side
-      // INSERTs because that would reintroduce partial invoices.
-      if (isSupabaseConfigured) {
-        const atomicResult = await SupabaseService.createInvoiceAtomic(invoice);
-        invoicePersistedAtomically = atomicResult;
-      }
-
       invoices.unshift(invoice);
 
       // Create document entry
@@ -2041,7 +2048,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.INVOICES, invoices);
     this.recalculateCustomerBalances();
     if (invoice.status !== 'draft') this.applyLocalInvoiceInventory(invoice);
-    if (!invoicePersistedAtomically) this.syncInvoiceToSupabase(invoice);
+    this.syncInvoiceToSupabase(invoice);
     return invoice;
   }
 

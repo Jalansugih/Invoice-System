@@ -2,10 +2,10 @@ import React, { useMemo, useState } from 'react';
 import {
   LayoutDashboard, Users, Package, FileText, Mail, CreditCard, Wallet,
   Link as LinkIcon, FolderOpen, BarChart3, Settings, History, ChevronLeft,
-  ChevronRight, ShieldCheck, Receipt,
+  ChevronRight, Building2, ShieldCheck, Receipt,
   ClipboardList, BookOpen, ChevronDown, Landmark,
-  ShoppingCart, Banknote, BookOpenCheck, Boxes, DatabaseBackup, Percent,
-  FileBarChart2,
+  ShoppingCart, Boxes,
+  DatabaseBackup, Percent, FileBarChart2, Hash, Database,
 } from 'lucide-react';
 import { StorageService } from '../../lib/storage';
 import { cn } from '../../lib/utils';
@@ -50,7 +50,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'products', label: 'Produk & Jasa', icon: Package },
         { id: 'customers', label: 'Pelanggan', icon: Users },
-        { id: 'coa', label: 'Kategori Akun (COA)', icon: BookOpenCheck },
       ],
     },
     {
@@ -60,12 +59,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'purchases', label: 'Pembelian', icon: ShoppingCart },
         { id: 'expenses', label: 'Pengeluaran', icon: Wallet },
         { id: 'payments', label: 'Pembayaran', icon: CreditCard },
-      ],
-    },
-    {
-      id: 'finance', label: 'Keuangan', icon: Banknote,
-      items: [
-        { id: 'cash_bank', label: 'Kas & Bank', icon: Landmark },
       ],
     },
     {
@@ -93,7 +86,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'account-system', label: 'Akun & Sistem', icon: ShieldCheck,
       items: [
-        { id: 'settings', label: 'Pengaturan', icon: Settings },
+        {
+          id: 'settings', label: 'Pengaturan', icon: Settings,
+          children: [
+            { id: 'settings_company', label: 'Profil & Kop Surat', icon: Building2 },
+            { id: 'settings_bank', label: 'Rekening Bank Penagihan', icon: CreditCard },
+            { id: 'settings_formats', label: 'Format Nomor Dokumen', icon: Hash },
+            { id: 'settings_database', label: 'Skema Database (Supabase)', icon: Database },
+          ],
+        },
       ],
     },
   ], [overdueCount]);

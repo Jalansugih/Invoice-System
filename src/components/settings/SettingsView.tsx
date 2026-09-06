@@ -35,8 +35,22 @@ import {
   CloudUpload,
 } from 'lucide-react';
 
-export const SettingsView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'company' | 'bank' | 'formats' | 'database'>('company');
+interface SettingsViewProps {
+  // Which internal tab to open. Passed down from the sidebar's Pengaturan
+  // sub-menu (via App.tsx) so each sub-menu item actually lands on the
+  // section it claims to, instead of always showing "company".
+  initialTab?: 'company' | 'bank' | 'formats' | 'database';
+}
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'company' }) => {
+  const [activeTab, setActiveTab] = useState<'company' | 'bank' | 'formats' | 'database'>(initialTab);
+
+  // SettingsView stays mounted while switching between the settings_* sub-menu
+  // entries (App.tsx only toggles the `initialTab` prop), so a plain useState
+  // initializer won't react to navigation after the first mount. Sync it here.
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [org, setOrg] = useState<Organization>(StorageService.getOrganization());
   const [isSaved, setIsSaved] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);

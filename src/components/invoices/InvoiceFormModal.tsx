@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Invoice, InvoiceItem, Customer, Product } from '../../types';
 import { StorageService } from '../../lib/storage';
 import { formatRupiah, calculateDueDate } from '../../lib/utils';
+import { calcLineAmount, calcInvoiceTotals } from '../../lib/invoiceCalc';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
@@ -166,7 +167,7 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
     const item = updated[index];
     const qty = item.quantity || 1;
     const itemDiscount = item.discount || 0;
-    const amount = Math.max(0, qty * prod.price - itemDiscount);
+    const amount = calcLineAmount(qty, prod.price, itemDiscount);
 
     updated[index] = {
       ...item,
@@ -187,27 +188,19 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
     const qty = Number(item.quantity) || 0;
     const price = Number(item.unitPrice) || 0;
     const discount = Number(item.discount) || 0;
-    item.amount = Math.max(0, qty * price - discount);
+    item.amount = calcLineAmount(qty, price, discount);
     updated[index] = item;
     setItems(updated);
   };
 
-  // Calculated totals — pajak dihitung PER ITEM memakai taxRate masing-masing
-  // baris (bukan satu tarif global), supaya invoice yang mencampur item
-  // ber-PPN berbeda (mis. 11% standar vs 0% ekspor/non-PKP) tetap akurat.
-  // Diskon tingkat invoice diprorata ke tiap item sesuai porsi subtotalnya
-  // sebelum tarif pajak baris itu diterapkan.
-  const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-  const discountAmount =
-    discountType === 'percentage' ? (subtotal * (discountValue || 0)) / 100 : discountValue || 0;
-  const taxableAmount = Math.max(0, subtotal - discountAmount);
-  const taxAmount = items.reduce((sum, item) => {
-    if (subtotal <= 0) return sum;
-    const itemDiscountShare = discountAmount * (item.amount / subtotal);
-    const itemTaxable = Math.max(0, item.amount - itemDiscountShare);
-    return sum + (itemTaxable * (item.taxRate || 0)) / 100;
-  }, 0);
-  const grandTotal = taxableAmount + taxAmount + (Number(additionalCharges) || 0);
+  // Total dihitung lewat lib/invoiceCalc.ts (satu sumber rumus yang sama
+  // dipakai storage.ts saat menyimpan, dan ditegakkan ulang oleh trigger
+  // database) supaya angka yang tampil di form selalu konsisten dengan
+  // yang benar-benar tersimpan.
+  const { subtotal, discountAmount, taxAmount, grandTotal } = calcInvoiceTotals(
+    items,
+    { discountType, discountValue: discountValue || 0, additionalCharges: additionalCharges || 0 }
+  );
 
   const distinctItemTaxRates = Array.from(new Set(items.map((i) => i.taxRate || 0)));
   const hasMixedTaxRates = distinctItemTaxRates.length > 1;

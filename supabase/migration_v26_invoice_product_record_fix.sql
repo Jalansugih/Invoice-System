@@ -1,18 +1,14 @@
--- =========================================================================
--- BILLINGFLOW — MIGRATION V24: Atomic Invoice Creation
+-- BILLINGFLOW V26 — FIX: invoice RPC custom-line product record initialization
 --
--- One RPC owns the complete CREATE invoice transaction:
---   1) validate authenticated organization/customer
---   2) calculate totals from submitted items + server-side product master price
---   3) reserve/use invoice number and insert invoice header
---   4) insert all invoice_items
---   5) invoice accounting trigger posts journal in the SAME transaction
---   6) update customer aggregates
---   7) write audit log
+-- Root cause of: "record \"v_product\" is not assigned yet"
+-- In V24 the product variable was declared as an untyped RECORD. For a custom
+-- invoice line (productId is NULL), no SELECT INTO ran, but later expressions
+-- still accessed v_product.price/code/name/unit. PostgreSQL raises the runtime
+-- error because the RECORD has never been assigned a row shape.
 --
--- Any exception rolls back ALL of the above. The browser must no longer do
--- header INSERT -> items INSERT -> cleanup as separate requests.
--- =========================================================================
+-- Fix: use the concrete products row type. This keeps custom lines valid while
+-- product-backed lines still validate organization + active product.
+-- Safe to re-run.
 
 CREATE OR REPLACE FUNCTION public.create_invoice_atomic(
   p_invoice_id UUID,

@@ -30,8 +30,6 @@ import { SettingsView } from './components/settings/SettingsView';
 import { ExpenseList } from './components/expenses/ExpenseList';
 import { PurchaseList } from './components/purchases/PurchaseList';
 import { UserGuideModal } from './components/guide/UserGuideModal';
-import { CashBankView } from './components/cashbank/CashBankView';
-import { ChartOfAccountsView } from './components/accounting/ChartOfAccountsView';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -47,7 +45,8 @@ export default function App() {
       'payments': 'payments', 'expenses': 'expenses', 'purchases': 'purchases',
       'letters': 'billing_letters', 'billing_letters': 'billing_letters', 'documents': 'documents',
       'business_documents': 'business_documents', 'payment_gateway': 'payment_gateway', 'audit': 'audit',
-      'settings': 'settings', 'coa': 'coa', 'cash-bank': 'cash_bank',
+      'settings': 'settings', 'settings/company': 'settings_company', 'settings/bank': 'settings_bank',
+      'settings/formats': 'settings_formats', 'settings/database': 'settings_database',
       'reports': 'report_summary', 'reports/summary': 'report_summary', 'reports/profit-loss': 'report_profit_loss',
       'reports/balance-sheet': 'report_balance_sheet', 'reports/cash-flow': 'report_cash_flow',
       'reports/general-ledger': 'report_general_ledger', 'reports/tax': 'report_tax', 'reports/stock': 'report_stock',
@@ -113,7 +112,8 @@ export default function App() {
 
     try {
       const routeMap: Record<string, string> = {
-        dashboard: '/', settings: '/settings', coa: '/coa', cash_bank: '/cash-bank',
+        dashboard: '/', settings_company: '/settings/company', settings_bank: '/settings/bank',
+        settings_formats: '/settings/formats', settings_database: '/settings/database',
         report_summary: '/reports/summary', report_profit_loss: '/reports/profit-loss',
         report_balance_sheet: '/reports/balance-sheet', report_cash_flow: '/reports/cash-flow',
         report_general_ledger: '/reports/general-ledger', report_tax: '/reports/tax', report_stock: '/reports/stock',
@@ -217,7 +217,7 @@ export default function App() {
           onOpenSearch={() => setIsSearchModalOpen(true)}
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
           onNavigate={(tab, id) => {
-            handleSelectTab(tab);
+            setCurrentTab(tab);
             if (id && tab === 'invoices') setViewingInvoiceId(id);
           }}
           onNavigateInvoice={(id) => {
@@ -380,9 +380,16 @@ export default function App() {
 
                 {currentTab === 'audit' && <AuditTrailView />}
 
-                {currentTab === 'settings' && <SettingsView />}
-                {currentTab === 'coa' && <ChartOfAccountsView />}
-                {currentTab === 'cash_bank' && <CashBankView />}
+                {['settings', 'settings_company', 'settings_bank', 'settings_formats', 'settings_database'].includes(currentTab) && (
+                  <SettingsView
+                    initialTab={
+                      currentTab === 'settings_bank' ? 'bank' :
+                      currentTab === 'settings_formats' ? 'formats' :
+                      currentTab === 'settings_database' ? 'database' :
+                      'company'
+                    }
+                  />
+                )}
               </>
             )}
           </div>
@@ -395,7 +402,7 @@ export default function App() {
         onClose={() => setIsSearchModalOpen(false)}
         onNavigate={(tab, id) => {
           setIsSearchModalOpen(false);
-          handleSelectTab(tab);
+          setCurrentTab(tab);
           if (tab === 'invoices' && id) {
             setViewingInvoiceId(id);
           } else if (tab === 'billing_letters' && id) {
@@ -450,7 +457,7 @@ export default function App() {
         isOpen={isCustomerModalOpen}
         onClose={() => setIsCustomerModalOpen(false)}
         onSuccess={() => {
-          handleSelectTab('customers');
+          setCurrentTab('customers');
         }}
       />
 
