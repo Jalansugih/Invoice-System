@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Invoice, InvoiceItem, Customer, Product } from '../../types';
-import { StorageService } from '../../lib/storage';
+import { StorageService, generateId } from '../../lib/storage';
 import { formatRupiah, calculateDueDate } from '../../lib/utils';
 import { calcLineAmount, calcInvoiceTotals } from '../../lib/invoiceCalc';
 import { Modal } from '../ui/Modal';
@@ -51,8 +51,7 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
   // Items
   const [items, setItems] = useState<InvoiceItem[]>([
     {
-      id: `item-${Date.now()}`,
-      description: 'Layanan Konsultasi & Implementasi',
+      id: generateId(),
       quantity: 1,
       unit: 'Paket',
       unitPrice: 10000000,
@@ -109,7 +108,7 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
         const p = products[0];
         setItems([
           {
-            id: `item-${Date.now()}`,
+            id: generateId(),
             productId: p.id,
             productCode: p.code,
             description: p.name + (p.description ? ` - ${p.description}` : ''),
@@ -139,7 +138,7 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
   // Line item handlers
   const handleAddItem = () => {
     const newItem: InvoiceItem = {
-      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: generateId(),
       description: '',
       quantity: 1,
       unit: 'Unit',
