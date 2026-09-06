@@ -75,7 +75,9 @@ export class SupabaseService {
     if (!isSupabaseConfigured) return false;
     try {
       const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData?.session) return false;
+      if (!sessionData?.session) {
+        throw new Error('Sesi Supabase tidak tersedia. Silakan login kembali sebelum menyimpan invoice.');
+      }
 
       const { error } = await supabase.rpc('create_invoice_atomic' as any, {
         p_invoice_id: invoice.id,

@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import {
-  LayoutDashboard, Users, Package, FileText, Mail, CreditCard, Wallet, Truck,
+  LayoutDashboard, Users, Package, FileText, Mail, CreditCard, Wallet,
   Link as LinkIcon, FolderOpen, BarChart3, Settings, History, ChevronLeft,
-  ChevronRight, Building2, ShieldCheck, Receipt,
+  ChevronRight, ShieldCheck, Receipt,
   ClipboardList, BookOpen, ChevronDown, Landmark,
-  ShoppingCart, Banknote, Boxes, BookOpenCheck, UserCog, SlidersHorizontal,
-  DatabaseBackup, Percent, FileBarChart2,
+  ShoppingCart, Banknote, BookOpenCheck, Boxes, DatabaseBackup, Percent,
+  FileBarChart2,
 } from 'lucide-react';
 import { StorageService } from '../../lib/storage';
 import { cn } from '../../lib/utils';
@@ -50,7 +50,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'products', label: 'Produk & Jasa', icon: Package },
         { id: 'customers', label: 'Pelanggan', icon: Users },
-        { id: 'suppliers', label: 'Supplier / Vendor', icon: Truck },
         { id: 'coa', label: 'Kategori Akun (COA)', icon: BookOpenCheck },
       ],
     },
@@ -67,7 +66,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'finance', label: 'Keuangan', icon: Banknote,
       items: [
         { id: 'cash_bank', label: 'Kas & Bank', icon: Landmark },
-        { id: 'inventory', label: 'Persediaan (Stok)', icon: Boxes },
       ],
     },
     {
@@ -95,16 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'account-system', label: 'Akun & Sistem', icon: ShieldCheck,
       items: [
-        { id: 'users_access', label: 'Pengguna & Hak Akses', icon: UserCog },
-        {
-          id: 'settings', label: 'Pengaturan', icon: Settings,
-          children: [
-            { id: 'settings_company', label: 'Profil Perusahaan', icon: Building2 },
-            { id: 'settings_tax', label: 'Preferensi Pajak', icon: Percent },
-            { id: 'settings_integrations', label: 'Integrasi & Notifikasi', icon: SlidersHorizontal },
-            { id: 'settings_backup', label: 'Backup Data', icon: DatabaseBackup },
-          ],
-        },
+        { id: 'settings', label: 'Pengaturan', icon: Settings },
       ],
     },
   ], [overdueCount]);

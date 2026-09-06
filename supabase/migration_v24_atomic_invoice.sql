@@ -140,10 +140,31 @@ DECLARE
 
   v_taxable := GREATEST(v_subtotal-v_discount_amount,0);
 
-  -- Invoice-level tax follows the application's invoice tax rule.
-  v_tax_amount := CASE WHEN COALESCE(p_tax_rate,0) > 0
-    THEN round(v_taxable * p_tax_rate / 100) ELSE 0 END;
+  -- Calculate tax from each line's effective tax rate. The invoice discount is
+  -- prorated by line amount so mixed-tax invoices remain mathematically stable.
+  v_tax_amount := 0;
+  FOR v_item IN SELECT value FROM jsonb_array_elements(p_items)
+  LOOP
+    v_product_id := NULLIF(v_item->>'productId','')::UUID;
+    v_product := NULL;
+    IF v_product_id IS NOT NULL THEN
+      SELECT id, price, tax_rate, unit INTO v_product
+      FROM public.products
+      WHERE id=v_product_id AND organization_id=v_org_id AND is_active=TRUE;
+    END IF;
+    v_qty := GREATEST(COALESCE((v_item->>'quantity')::NUMERIC,1),0.01);
+    v_unit_price := GREATEST(COALESCE(v_product.price, (v_item->>'unitPrice')::NUMERIC,0),0);
+    v_discount := LEAST(GREATEST(COALESCE((v_item->>'discount')::NUMERIC,0),0), v_qty*v_unit_price);
+    v_amount := GREATEST(round((v_qty*v_unit_price)-v_discount),0);
+    v_tax_rate := GREATEST(COALESCE((v_item->>'taxRate')::NUMERIC, v_product.tax_rate, p_tax_rate, 0),0);
+    v_tax_amount := v_tax_amount + CASE
+      WHEN v_subtotal > 0 AND v_tax_rate > 0 THEN
+        round(GREATEST(v_amount - (v_discount_amount * v_amount / v_subtotal),0) * v_tax_rate / 100)
+      ELSE 0 END;
+  END LOOP;
+  v_tax_amount := round(v_tax_amount,0);
   v_grand_total := v_taxable + v_tax_amount + v_additional;
+  p_tax_rate := CASE WHEN v_taxable > 0 THEN round(v_tax_amount / v_taxable * 100, 2) ELSE 0 END;
   v_status := COALESCE(p_status,'draft');
 
   INSERT INTO public.invoices(
@@ -197,6 +218,11 @@ DECLARE
       v_amount
     );
   END LOOP;
+
+  -- Inventory posting must happen after all invoice_items exist. The header
+  -- INSERT trigger intentionally cannot see the line items yet, so invoke the
+  -- inventory posting explicitly here while remaining in this same transaction.
+  PERFORM public.post_invoice_inventory(p_invoice_id);
 
   -- Recalculate aggregates rather than incrementing stale values. This is
   -- still inside the same transaction and prevents drift on existing data.
