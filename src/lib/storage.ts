@@ -1128,10 +1128,10 @@ export class StorageService {
     );
   }
 
-  private static syncInvoiceToSupabase(invoice: Invoice) {
+  private static syncInvoiceToSupabase(invoice: Invoice): Promise<void> {
     const orgId = this.getSyncOrgId();
-    if (!orgId) return;
-    this.trackedSync('invoices', invoice.id, invoice.invoiceNumber || invoice.id, () =>
+    if (!orgId) return Promise.resolve();
+    return this.trackedSync('invoices', invoice.id, invoice.invoiceNumber || invoice.id, () =>
       SupabaseService.saveInvoice(invoice, orgId)
     );
   }
@@ -1156,10 +1156,10 @@ export class StorageService {
     );
   }
 
-  private static syncProductToSupabase(product: Product) {
+  private static syncProductToSupabase(product: Product): Promise<void> {
     const orgId = this.getSyncOrgId();
-    if (!orgId) return;
-    this.trackedSync('products', product.id, product.name, () =>
+    if (!orgId) return Promise.resolve();
+    return this.trackedSync('products', product.id, product.name, () =>
       SupabaseService.saveProduct(product, orgId)
     );
   }
@@ -1321,11 +1321,28 @@ export class StorageService {
       if (items && items.length > 0) {
         let itemsChanged = false;
         items = items.map((item) => {
-          if (item.productId && productIdMap.has(item.productId)) {
-            itemsChanged = true;
-            return { ...item, productId: productIdMap.get(item.productId) };
+          let itemChanged = false;
+          let itemId = item.id;
+          // Line items themselves used to get a non-UUID id (e.g.
+          // `item-1735...`) from InvoiceFormModal before that was fixed.
+          // invoice_items.id is a UUID column in Supabase, so any surviving
+          // legacy id makes the insert fail every single time this invoice
+          // is saved - silently, because saveInvoice() previously didn't
+          // surface that failure either. Regenerate it here so already-
+          // created invoices heal on next login instead of staying broken
+          // forever.
+          if (!isValidUUID(itemId)) {
+            itemId = generateId();
+            itemChanged = true;
           }
-          return item;
+          let productId = item.productId;
+          if (productId && productIdMap.has(productId)) {
+            productId = productIdMap.get(productId);
+            itemChanged = true;
+          }
+          if (!itemChanged) return item;
+          itemsChanged = true;
+          return { ...item, id: itemId, productId };
         });
         if (itemsChanged) changed = true;
       }
@@ -1508,18 +1525,18 @@ export class StorageService {
       ]);
 
       localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
-      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
+      if (invoices !== null) localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
       localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
       // Products, billing letters, documents, audit logs: only overwrite the
       // local cache if Supabase actually returned something (or we know the
       // org genuinely has none yet). An empty array here could also mean the
       // fetch swallowed an error internally, so we only trust it once
       // connection+auth are confirmed above.
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+      if (products !== null) localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
       if (vendors !== null) localStorage.setItem(STORAGE_KEYS.VENDORS, JSON.stringify(vendors));
       if (purchases !== null) localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases));
-      localStorage.setItem(STORAGE_KEYS.BILLING_LETTERS, JSON.stringify(billingLetters));
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(documents));
+      if (billingLetters !== null) localStorage.setItem(STORAGE_KEYS.BILLING_LETTERS, JSON.stringify(billingLetters));
+      if (documents !== null) localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(documents));
       localStorage.setItem(STORAGE_KEYS.BUSINESS_DOCUMENTS, JSON.stringify(businessDocuments));
       // Audit logs are append-only and capped locally at 200 entries for UI
       // performance; Supabase is the real source of truth for full history.
@@ -1703,7 +1720,21 @@ export class StorageService {
     }
 
     this.setItem(STORAGE_KEYS.PRODUCTS, products);
-    this.syncProductToSupabase(product);
+
+    // Wait for the actual Supabase write to finish (previously this was
+    // fire-and-forget: saveProduct() returned as soon as the LOCAL write
+    // was done, so every caller - including bulk import - believed the
+    // save had succeeded even when the cloud upsert silently failed in
+    // the background). The product stays in the local list either way
+    // (offline-first), but callers can now tell the two cases apart.
+    await this.syncProductToSupabase(product);
+    const syncFailed = this.getSyncFailures().some((f) => f.table === 'products' && f.id === product.id);
+    if (syncFailed) {
+      throw new Error(
+        `"${product.name}" tersimpan di perangkat ini, tapi GAGAL disimpan ke database (belum tersinkron). ` +
+        `Cek indikator sinkronisasi di navbar untuk mencoba lagi, atau perbaiki koneksi/izin Supabase Anda.`
+      );
+    }
     return product;
   }
 
@@ -2048,7 +2079,20 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.INVOICES, invoices);
     this.recalculateCustomerBalances();
     if (invoice.status !== 'draft') this.applyLocalInvoiceInventory(invoice);
-    this.syncInvoiceToSupabase(invoice);
+
+    // Same fix as saveProduct(): wait for the real Supabase write instead of
+    // firing it and returning immediately. Previously a failed sync (e.g.
+    // invoice_items insert rejected) was invisible here - the caller always
+    // got back a "saved" invoice even when nothing but the header (or
+    // nothing at all) actually reached Supabase.
+    await this.syncInvoiceToSupabase(invoice);
+    const syncFailed = this.getSyncFailures().some((f) => f.table === 'invoices' && f.id === invoice.id);
+    if (syncFailed) {
+      throw new Error(
+        `Invoice "${invoice.invoiceNumber}" tersimpan di perangkat ini, tapi GAGAL disimpan ke database (belum tersinkron). ` +
+        `Cek indikator sinkronisasi di navbar untuk mencoba lagi, atau perbaiki koneksi/izin Supabase Anda.`
+      );
+    }
     return invoice;
   }
 

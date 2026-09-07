@@ -399,7 +399,7 @@ export class SupabaseService {
   // 3. PRODUCTS
   // =========================================================================
 
-  public static async fetchProducts(orgId: string): Promise<Product[]> {
+  public static async fetchProducts(orgId: string): Promise<Product[] | null> {
     if (!isSupabaseConfigured) return [];
 
     try {
@@ -428,7 +428,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchProducts error:', e);
-      return [];
+      return null;
     }
   }
 
@@ -586,7 +586,7 @@ export class SupabaseService {
   // 4. INVOICES & INVOICE ITEMS
   // =========================================================================
 
-  public static async fetchInvoices(orgId: string): Promise<Invoice[]> {
+  public static async fetchInvoices(orgId: string): Promise<Invoice[] | null> {
     if (!isSupabaseConfigured) return [];
 
     try {
@@ -661,7 +661,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchInvoices error:', e);
-      return [];
+      return null;
     }
   }
 
@@ -724,7 +724,15 @@ export class SupabaseService {
 
         const { error: itemsError } = await supabase.from('invoice_items').insert(itemRows);
         if (itemsError) {
+          // This used to only be logged, so the function fell through to
+          // `return true` below regardless - meaning the invoice header
+          // would look successfully synced in Supabase while its line
+          // items were silently missing (the delete above already removed
+          // the old ones). Report it as a real failure so trackedSync()
+          // marks this invoice as sync-failed and it shows up for retry
+          // instead of silently rotting with a header and no items.
           console.error('Failed to save invoice_items:', itemsError);
+          return false;
         }
       }
 
@@ -836,7 +844,7 @@ export class SupabaseService {
   // 6. BILLING LETTERS (SURAT TAGIHAN)
   // =========================================================================
 
-  public static async fetchBillingLetters(orgId: string): Promise<BillingLetter[]> {
+  public static async fetchBillingLetters(orgId: string): Promise<BillingLetter[] | null> {
     if (!isSupabaseConfigured) return [];
 
     try {
@@ -880,7 +888,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchBillingLetters error:', e);
-      return [];
+      return null;
     }
   }
 
@@ -930,7 +938,7 @@ export class SupabaseService {
   // 7. DOCUMENTS ARCHIVE
   // =========================================================================
 
-  public static async fetchDocuments(orgId: string): Promise<DocumentItem[]> {
+  public static async fetchDocuments(orgId: string): Promise<DocumentItem[] | null> {
     if (!isSupabaseConfigured) return [];
 
     try {
@@ -961,7 +969,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchDocuments error:', e);
-      return [];
+      return null;
     }
   }
 
