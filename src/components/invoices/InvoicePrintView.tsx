@@ -301,7 +301,7 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
         </div>
 
         {/* 5. Bank Account & Signature Footer */}
-        <div className="signature-block grid grid-cols-1 sm:grid-cols-2 gap-8 my-8 pt-6 border-t-2 border-slate-200 text-xs avoid-page-break">
+        <div className="signature-block invoice-footer-grid grid grid-cols-2 gap-8 my-8 pt-6 border-t-2 border-slate-200 text-xs avoid-page-break">
           {/* Bank Instructions */}
           {bank && (
             <div className="bank-instruction-block p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 print:bg-slate-50/50">
@@ -318,14 +318,17 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
           )}
 
           {/* Signature Box */}
-          <div className="text-center sm:text-right flex flex-col justify-between items-center sm:items-end">
-            <p className="text-xs text-slate-600">
-              {org.city}, {formatIndoDate(invoice.issueDate)}
-            </p>
-            <p className="text-xs font-bold text-slate-900 uppercase mt-1">{org.name}</p>
+          <div className="signature-column col-start-2 w-full flex flex-col justify-between">
+            {/* Titi mangsa + nama perusahaan: satu blok kanan dengan batas kanan yang sama */}
+            <div className="signature-date w-full text-right">
+              <p className="m-0 w-full text-right text-xs text-slate-600">
+                {org.city ? `${org.city}, ${formatIndoDate(invoice.issueDate)}` : formatIndoDate(invoice.issueDate)}
+              </p>
+              <p className="m-0 w-full text-right text-xs font-bold text-slate-900 uppercase mt-1">{org.name}</p>
+            </div>
 
-            {/* Signature space */}
-            <div className="h-20 flex items-center justify-center my-1">
+            {/* Signature space: tetap di tengah kolom kanan */}
+            <div className="signature-mark h-20 w-full flex items-center justify-end my-1">
               {org.signatureImage ? (
                 <img
                   src={org.signatureImage}
@@ -334,17 +337,17 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice, onB
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="border border-dashed border-slate-300 rounded px-4 py-2 text-[10px] text-slate-400">
+                <div className="border border-dashed border-slate-300 rounded px-4 py-2 text-[10px] text-slate-400 ml-auto">
                   [ Tanda Tangan & Cap Resmi ]
                 </div>
               )}
             </div>
 
-            <div>
-              <p className="text-xs font-bold text-slate-900 underline uppercase tracking-tight">
+            <div className="signature-person w-full text-right">
+              <p className="w-full text-right text-xs font-bold text-slate-900 underline uppercase tracking-tight">
                 {org.signatureName || org.directorName || 'Finance & Accounting Manager'}
               </p>
-              <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+              <p className="w-full text-right text-[11px] text-slate-600 font-medium mt-0.5">
                 {org.signatureRole || 'Finance & Accounting Manager'}
               </p>
             </div>

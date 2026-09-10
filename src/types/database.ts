@@ -172,6 +172,9 @@ export interface Database {
       purchases: { Row: PurchaseRow; Insert: PurchaseInsert; Update: PurchaseUpdate; Relationships: []; };
       purchase_items: { Row: PurchaseItemRow; Insert: PurchaseItemInsert; Update: PurchaseItemUpdate; Relationships: []; };
       purchase_payments: { Row: PurchasePaymentRow; Insert: PurchasePaymentInsert; Update: PurchasePaymentUpdate; Relationships: []; };
+      invoice_costings: { Row: InvoiceCostingRow; Insert: InvoiceCostingInsert; Update: InvoiceCostingUpdate; Relationships: []; };
+      invoice_costing_components: { Row: InvoiceCostingComponentRow; Insert: InvoiceCostingComponentInsert; Update: InvoiceCostingComponentUpdate; Relationships: []; };
+      payment_gateway_transactions: { Row: PaymentGatewayTransactionRow; Insert: PaymentGatewayTransactionInsert; Update: PaymentGatewayTransactionUpdate; Relationships: []; };
     };
     Views: {
       [_ in never]: never;
@@ -195,6 +198,10 @@ export interface Database {
       };
       record_purchase_payment_atomic: {
         Args: { p_purchase_id: string; p_payment_date: string; p_amount: number; p_payment_account_id: string; p_reference_number?: string | null; p_notes?: string | null; p_idempotency_key?: string | null };
+        Returns: Json;
+      };
+      record_gateway_payment_atomic: {
+        Args: { p_gateway_transaction_id: string };
         Returns: Json;
       };
       record_payment_atomic: {
@@ -489,6 +496,94 @@ export type PurchaseItemUpdate = Partial<PurchaseItemRow>;
 export type PurchasePaymentRow = { id:string; organization_id:string; purchase_id:string; payment_date:string; amount:number; payment_account_id:string; reference_number:string|null; notes:string|null; journal_entry_id:string|null; created_by:string|null; created_at:string; idempotency_key?:string|null };
 export type PurchasePaymentInsert = Partial<PurchasePaymentRow> & { organization_id:string; purchase_id:string; payment_date:string; amount:number; payment_account_id:string };
 export type PurchasePaymentUpdate = Partial<PurchasePaymentRow>;
+export type InvoiceCostingStatus = 'safe' | 'warning' | 'danger';
+export type InvoiceCostingInputType = 'rp' | 'percent';
+export type InvoiceCostingBasis = 'tender' | 'hpp' | 'direct_cost';
+
+export type InvoiceCostingRow = {
+  id: string;
+  organization_id: string;
+  invoice_id: string;
+  customer_id: string;
+  transaction_date: string;
+  nilai_tender: number;
+  hpp_barang: number;
+  biaya_langsung: number;
+  total_biaya: number;
+  estimasi_laba: number;
+  margin_persen: number | null;
+  markup_persen: number | null;
+  harga_bep: number | null;
+  harga_target: number | null;
+  hpp_maksimal: number | null;
+  target_margin: number;
+  status: InvoiceCostingStatus;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InvoiceCostingInsert = Partial<InvoiceCostingRow> & {
+  organization_id: string;
+  invoice_id: string;
+  customer_id: string;
+  transaction_date: string;
+};
+export type InvoiceCostingUpdate = Partial<InvoiceCostingRow>;
+
+export type InvoiceCostingComponentRow = {
+  id: string;
+  costing_id: string;
+  organization_id: string;
+  name: string;
+  input_type: InvoiceCostingInputType;
+  input_value: number;
+  basis: InvoiceCostingBasis | null;
+  calculated_amount: number;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+export type InvoiceCostingComponentInsert = Partial<InvoiceCostingComponentRow> & {
+  costing_id: string;
+  organization_id: string;
+  name: string;
+  input_type: InvoiceCostingInputType;
+};
+export type InvoiceCostingComponentUpdate = Partial<InvoiceCostingComponentRow>;
+
+export type PaymentGatewayTransactionRow = {
+  id: string;
+  organization_id: string;
+  invoice_id: string;
+  provider: string;
+  order_id: string;
+  transaction_id: string | null;
+  amount: number;
+  currency: string;
+  payment_url: string | null;
+  token: string | null;
+  status: string;
+  payment_type: string | null;
+  fraud_status: string | null;
+  transaction_time: string | null;
+  settlement_time: string | null;
+  expires_at: string | null;
+  metadata: Json | null;
+  raw_notification: Json | null;
+  payment_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type PaymentGatewayTransactionInsert = Partial<PaymentGatewayTransactionRow> & {
+  organization_id: string;
+  invoice_id: string;
+  order_id: string;
+  amount: number;
+};
+export type PaymentGatewayTransactionUpdate = Partial<PaymentGatewayTransactionRow>;
 
 /**
  * 2.4 Products / Services Master Table

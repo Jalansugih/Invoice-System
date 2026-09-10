@@ -15,6 +15,7 @@ import {
   BankAccount,
   BusinessDocument,
 } from '../types';
+import { CostComponentInput, CostingCalculationResult } from './costingEngine';
 
 export interface MigrationResult {
   success: boolean;
@@ -288,7 +289,7 @@ export class SupabaseService {
 
       if (error) {
         console.error('Failed to save organization in Supabase:', error);
-        return false;
+        throw error;
       }
 
       // Upsert bank accounts
@@ -302,13 +303,14 @@ export class SupabaseService {
           branch: b.branch,
           is_default: b.isDefault,
         }));
-        await supabase.from('bank_accounts').upsert(bankPayload);
+        const { error: bankError } = await supabase.from('bank_accounts').upsert(bankPayload);
+        if (bankError) throw bankError;
       }
 
       return true;
     } catch (e) {
       console.error('Supabase saveOrganization exception:', e);
-      return false;
+      throw e;
     }
   }
 
@@ -382,10 +384,11 @@ export class SupabaseService {
         updated_at: new Date().toISOString(),
       });
 
-      return !error;
+      if (error) throw error;
+      return true;
     } catch (e) {
       console.error('Supabase saveCustomer error:', e);
-      return false;
+      throw e;
     }
   }
 
@@ -454,10 +457,11 @@ export class SupabaseService {
         updated_at: new Date().toISOString(),
       });
 
-      return !error;
+      if (error) throw error;
+      return true;
     } catch (e) {
       console.error('Supabase saveProduct error:', e);
-      return false;
+      throw e;
     }
   }
 
@@ -701,7 +705,7 @@ export class SupabaseService {
 
       if (invError) {
         console.error('Failed to save invoice in Supabase:', invError);
-        return false;
+        throw invError;
       }
 
       // 2. Delete existing items and re-insert new items
@@ -754,6 +758,190 @@ export class SupabaseService {
   public static async deleteInvoice(invoiceId: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const { error } = await supabase.from('invoices').delete().eq('id', invoiceId);
+    return !error;
+  }
+
+  // =========================================================================
+  // 4A. COSTING & PROFIT
+  // =========================================================================
+
+  public static async fetchCosting(invoiceId: string): Promise<any | null> {
+    if (!isSupabaseConfigured) return null;
+    try {
+      // Keep the two reads separate. The local Database contract intentionally
+      // does not pretend to know Supabase's generated relationship metadata;
+      // the FK is enforced by PostgreSQL and this also avoids the
+      // `SelectQueryError<Invalid Relationships>` type produced by nested
+      // PostgREST selects when generated relationship metadata is stale.
+      const { data, error } = await supabase
+        .from('invoice_costings')
+        .select('*')
+        .eq('invoice_id', invoiceId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+
+      const { data: componentRows, error: componentError } = await supabase
+        .from('invoice_costing_components')
+        .select('*')
+        .eq('costing_id', data.id)
+        .order('sort_order', { ascending: true });
+      if (componentError) throw componentError;
+
+      return {
+        id: data.id,
+        invoiceId: data.invoice_id,
+        organizationId: data.organization_id,
+        customerId: data.customer_id,
+        transactionDate: data.transaction_date,
+        nilaiTender: Number(data.nilai_tender) || 0,
+        hppBarang: Number(data.hpp_barang) || 0,
+        targetMargin: Number(data.target_margin) || 0,
+        result: {
+          nilaiTender: Number(data.nilai_tender) || 0,
+          hppBarang: Number(data.hpp_barang) || 0,
+          biayaLangsung: Number(data.biaya_langsung) || 0,
+          totalBiaya: Number(data.total_biaya) || 0,
+          estimasiLaba: Number(data.estimasi_laba) || 0,
+          marginPersen: data.margin_persen === null ? null : Number(data.margin_persen),
+          markupPersen: data.markup_persen === null ? null : Number(data.markup_persen),
+          hargaBep: data.harga_bep === null ? null : Number(data.harga_bep),
+          hargaTarget: data.harga_target === null ? null : Number(data.harga_target),
+          hppMaksimal: data.hpp_maksimal === null ? null : Number(data.hpp_maksimal),
+          status: data.status,
+          targetMargin: Number(data.target_margin) || 0,
+        },
+        components: (componentRows || []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          inputType: c.input_type,
+          inputValue: Number(c.input_value) || 0,
+          basis: c.basis || null,
+          amount: Number(c.calculated_amount) || 0,
+          sortOrder: Number(c.sort_order) || 0,
+          isActive: Boolean(c.is_active),
+        })),
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        createdBy: data.created_by,
+        updatedBy: data.updated_by,
+      };
+    } catch (e) {
+      console.error('Supabase fetchCosting error:', e);
+      throw e;
+    }
+  }
+
+  public static async saveCosting(payload: {
+    invoiceId: string;
+    customerId: string;
+    transactionDate: string;
+    nilaiTender: number;
+    hppBarang: number;
+    targetMargin: number;
+    components: CostComponentInput[];
+    result: CostingCalculationResult;
+  }): Promise<any | null> {
+    if (!isSupabaseConfigured) return null;
+    const session = await supabase.auth.getSession();
+    if (!session.data.session?.user) return null;
+    const userId = session.data.session.user.id;
+
+    try {
+      // The invoice FK + tenant RLS is the authoritative ownership check.
+      const header = {
+        invoice_id: payload.invoiceId,
+        organization_id: null as string | null,
+        customer_id: payload.customerId,
+        transaction_date: payload.transactionDate,
+        nilai_tender: payload.nilaiTender,
+        hpp_barang: payload.hppBarang,
+        biaya_langsung: payload.result.biayaLangsung,
+        total_biaya: payload.result.totalBiaya,
+        estimasi_laba: payload.result.estimasiLaba,
+        margin_persen: payload.result.marginPersen,
+        markup_persen: payload.result.markupPersen,
+        harga_bep: payload.result.hargaBep,
+        harga_target: payload.result.hargaTarget,
+        hpp_maksimal: payload.result.hppMaksimal,
+        target_margin: payload.targetMargin,
+        status: payload.result.status,
+        updated_by: userId,
+      };
+
+      const { data: invoiceRow, error: invoiceError } = await supabase
+        .from('invoices')
+        .select('organization_id, customer_id, grand_total, issue_date')
+        .eq('id', payload.invoiceId)
+        .single();
+      if (invoiceError || !invoiceRow) throw new Error('Invoice tidak ditemukan atau bukan milik organisasi Anda.');
+      if (invoiceRow.customer_id !== payload.customerId) throw new Error('Customer Costing tidak cocok dengan invoice.');
+      if (Math.abs(Number(invoiceRow.grand_total) - Number(payload.nilaiTender)) > 0.01) throw new Error('Nilai tender berubah. Muat ulang Detail Invoice sebelum menyimpan Costing.');
+      header.organization_id = invoiceRow.organization_id;
+
+      const { data: existingCosting } = await supabase
+        .from('invoice_costings')
+        .select('id')
+        .eq('invoice_id', payload.invoiceId)
+        .maybeSingle();
+
+      const { data: costing, error: costingError } = await supabase
+        .from('invoice_costings')
+        .upsert(header, { onConflict: 'invoice_id' })
+        .select('*')
+        .single();
+      if (costingError) throw costingError;
+
+      const { error: deleteError } = await supabase
+        .from('invoice_costing_components')
+        .delete()
+        .eq('costing_id', costing.id);
+      if (deleteError) throw deleteError;
+
+      if (payload.components.length > 0) {
+        const rows = payload.components.map((c, index) => {
+          const result = payload.result.komponen.find((r) => (r.id && c.id && r.id === c.id) || r.name === c.name && r.sortOrder === c.sortOrder);
+          return {
+            costing_id: costing.id,
+            organization_id: invoiceRow.organization_id,
+            name: c.name.trim() || `Biaya ${index + 1}`,
+            input_type: c.inputType,
+            input_value: Number(c.inputValue) || 0,
+            basis: c.inputType === 'percent' ? (c.basis || 'tender') : null,
+            calculated_amount: Number(result?.amount) || 0,
+            sort_order: index + 1,
+            is_active: c.isActive !== false,
+          };
+        });
+        const { error: componentsError } = await supabase.from('invoice_costing_components').insert(rows);
+        if (componentsError) throw componentsError;
+      }
+
+      const action = existingCosting ? 'update' : 'create';
+      const { data: profile } = await supabase.from('profiles').select('name, role').eq('id', userId).maybeSingle();
+      await supabase.from('audit_logs').insert({
+        organization_id: invoiceRow.organization_id,
+        user_id: userId,
+        user_name: profile?.name || session.data.session.user.user_metadata?.full_name || session.data.session.user.email || 'User',
+        user_role: profile?.role || 'finance',
+        action,
+        module: 'invoices',
+        record_id: payload.invoiceId,
+        record_title: `Costing ${payload.invoiceId}`,
+        details: action === 'create' ? 'Membuat Costing & Profit invoice.' : 'Mengubah Costing & Profit invoice.',
+        timestamp: new Date().toISOString(),
+      });
+
+      return await this.fetchCosting(payload.invoiceId);
+    } catch (e) {
+      console.error('Supabase saveCosting error:', e);
+      throw e;
+    }
+  }
+
+  public static async deleteCosting(invoiceId: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const { error } = await supabase.from('invoice_costings').delete().eq('invoice_id', invoiceId);
     return !error;
   }
 
@@ -822,10 +1010,11 @@ export class SupabaseService {
         receipt_number: payment.receiptNumber,
       });
 
-      return !error;
+      if (error) throw error;
+      return true;
     } catch (e) {
       console.error('Supabase savePayment error:', e);
-      return false;
+      throw e;
     }
   }
 
@@ -916,10 +1105,11 @@ export class SupabaseService {
         sent_at: letter.sentAt,
       });
 
-      return !error;
+      if (error) throw error;
+      return true;
     } catch (e) {
       console.error('Supabase saveBillingLetter error:', e);
-      return false;
+      throw e;
     }
   }
 

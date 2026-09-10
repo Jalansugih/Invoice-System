@@ -1,5 +1,4 @@
-import { config as loadEnv } from 'dotenv';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,7 +13,17 @@ if (!isVercel) {
   for (const file of ['.env.local', '.env']) {
     const filePath = path.join(rootDir, file);
     if (existsSync(filePath)) {
-      loadEnv({ path: filePath, override: false });
+      // Keep the production preflight dependency-free. Vite will load these
+      // files for the client build; this tiny parser only needs to expose the
+      // two Supabase variables to this Node preflight script.
+      for (const line of readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+        const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+        if (!match) continue;
+        const [, name, rawValue] = match;
+        if (process.env[name] !== undefined) continue;
+        const value = rawValue.replace(/^['"]|['"]$/g, '');
+        process.env[name] = value;
+      }
     }
   }
 }

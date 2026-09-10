@@ -4,6 +4,7 @@ import { StorageService } from '../../lib/storage';
 import { formatRupiah, formatIndoDate, getInvoiceStatusBadge, printElement } from '../../lib/utils';
 import { exportElementToPdf } from '../../lib/pdfExport';
 import { InvoicePrintView } from './InvoicePrintView';
+import { CostingProfitPanel } from './CostingProfitPanel';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -25,6 +26,7 @@ import {
   ExternalLink,
   MessageCircle,
   Share2,
+  Calculator,
 } from 'lucide-react';
 
 export interface InvoiceDetailViewProps {
@@ -46,7 +48,7 @@ export const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({
   onViewLetter,
   onInvoiceDeleted,
 }) => {
-  const [activeTab, setActiveTab] = useState<'preview' | 'payments' | 'letters' | 'audit'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview' | 'costing' | 'payments' | 'letters' | 'audit'>('preview');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [, setTick] = useState(0);
@@ -192,6 +194,16 @@ export const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({
             {isExportingPdf ? 'Mengekspor...' : 'Unduh PDF'}
           </Button>
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setActiveTab('costing')}
+            leftIcon={<Calculator className="w-4 h-4 text-blue-600" />}
+            className="text-blue-700 border-blue-200 hover:bg-blue-50 font-semibold"
+          >
+            Costing
+          </Button>
+
           {!isPaid && invoice.status !== 'cancelled' && (
             <Button
               size="sm"
@@ -260,6 +272,18 @@ export const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('costing')}
+          className={`text-xs px-4 py-2.5 font-semibold border-b-2 transition-all flex items-center gap-2 ${
+            activeTab === 'costing'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Calculator className="w-4 h-4" />
+          Costing & Profit
+        </button>
+
+        <button
           onClick={() => setActiveTab('payments')}
           className={`text-xs px-4 py-2.5 font-semibold border-b-2 transition-all flex items-center gap-2 ${
             activeTab === 'payments'
@@ -299,6 +323,10 @@ export const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({
       {/* Tab Content */}
       {activeTab === 'preview' && (
         <InvoicePrintView invoice={invoice} onBack={onBack} />
+      )}
+
+      {activeTab === 'costing' && (
+        <CostingProfitPanel invoice={invoice} />
       )}
 
       {activeTab === 'payments' && (

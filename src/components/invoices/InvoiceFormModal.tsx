@@ -52,6 +52,7 @@ export const InvoiceFormModal: React.FC<InvoiceFormModalProps> = ({
   const [items, setItems] = useState<InvoiceItem[]>([
     {
       id: generateId(),
+      description: '',
       quantity: 1,
       unit: 'Paket',
       unitPrice: 10000000,

@@ -69,6 +69,7 @@ const STORAGE_KEYS = {
   SEQUENCES: 'billingflow_sequences',
   BANK_TRANSACTIONS: 'billingflow_bank_transactions',
   BANK_CONNECTIONS: 'billingflow_bank_connections',
+  COSTINGS: 'billingflow_costings',
 };
 
 // Default organization
@@ -1003,7 +1004,12 @@ export class StorageService {
       if (ok) {
         this.clearSyncFailure(table, id);
       } else {
-        this.markSyncFailure(table, id, label, 'Supabase menolak permintaan (lihat console untuk detail)');
+        this.markSyncFailure(
+          table,
+          id,
+          label,
+          'Supabase menolak permintaan. Periksa sesi login, organization_id, RLS/policy, dan struktur kolom tabel.'
+        );
       }
     } catch (e) {
       console.error(`Gagal sinkron ${table} (${label}) ke Supabase:`, e);
@@ -1051,6 +1057,10 @@ export class StorageService {
         } else this.clearSyncFailure(f.table, f.id);
       }
     }
+  }
+
+  public static notifyExternalChange(): void {
+    this.notify();
   }
 
   public static subscribe(listener: () => void) {
@@ -1114,10 +1124,10 @@ export class StorageService {
     return orgId || null;
   }
 
-  private static syncCustomerToSupabase(customer: Customer) {
+  private static syncCustomerToSupabase(customer: Customer): Promise<void> {
     const orgId = this.getSyncOrgId();
-    if (!orgId) return;
-    this.trackedSync('customers', customer.id, customer.name, () =>
+    if (!orgId) return Promise.resolve();
+    return this.trackedSync('customers', customer.id, customer.name, () =>
       SupabaseService.saveCustomer(customer, orgId)
     );
   }
@@ -1142,10 +1152,10 @@ export class StorageService {
     );
   }
 
-  private static syncPaymentToSupabase(payment: Payment) {
+  private static syncPaymentToSupabase(payment: Payment): Promise<void> {
     const orgId = this.getSyncOrgId();
-    if (!orgId) return;
-    this.trackedSync('payments', payment.id, payment.id, () =>
+    if (!orgId) return Promise.resolve();
+    return this.trackedSync('payments', payment.id, payment.id, () =>
       SupabaseService.savePayment(payment, orgId)
     );
   }
@@ -1170,10 +1180,10 @@ export class StorageService {
     );
   }
 
-  private static syncBillingLetterToSupabase(letter: BillingLetter) {
+  private static syncBillingLetterToSupabase(letter: BillingLetter): Promise<void> {
     const orgId = this.getSyncOrgId();
-    if (!orgId) return;
-    this.trackedSync('billing_letters', letter.id, letter.letterNumber, () =>
+    if (!orgId) return Promise.resolve();
+    return this.trackedSync('billing_letters', letter.id, letter.letterNumber, () =>
       SupabaseService.saveBillingLetter(letter, orgId)
     );
   }
@@ -1184,10 +1194,10 @@ export class StorageService {
     );
   }
 
-  private static syncDocumentToSupabase(doc: DocumentItem) {
+  private static syncDocumentToSupabase(doc: DocumentItem): Promise<void> {
     const orgId = this.getSyncOrgId();
-    if (!orgId) return;
-    this.trackedSync('documents', doc.id, doc.title, () =>
+    if (!orgId) return Promise.resolve();
+    return this.trackedSync('documents', doc.id, doc.title, () =>
       SupabaseService.saveDocument(doc, orgId)
     );
   }
@@ -1524,6 +1534,7 @@ export class StorageService {
         SupabaseService.fetchPurchases(orgId),
       ]);
 
+
       localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
       if (invoices !== null) localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
       localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
@@ -1589,7 +1600,7 @@ export class StorageService {
     // whenever org.id looks like a real UUID rather than the local-only
     // 'legacy local placeholder' placeholder used before any cloud org exists.
     if (!isValidUUID(org.id)) return;
-    this.trackedSync('organizations', org.id, org.name, () => SupabaseService.saveOrganization(org));
+    return this.trackedSync('organizations', org.id, org.name, () => SupabaseService.saveOrganization(org));
   }
 
   // User Profile
@@ -1665,7 +1676,19 @@ export class StorageService {
     }
 
     this.setItem(STORAGE_KEYS.CUSTOMERS, customers);
-    this.syncCustomerToSupabase(customer);
+
+    // Do not report success while the cloud write is still running.
+    // localStorage remains the offline cache, but Supabase must be confirmed
+    // before the UI treats a new customer as durably saved.
+    await this.syncCustomerToSupabase(customer);
+    const syncFailed = this.getSyncFailures().some((f) => f.table === 'customers' && f.id === customer.id);
+    if (syncFailed) {
+      const failure = this.getSyncFailures().find((f) => f.table === 'customers' && f.id === customer.id);
+      throw new Error(
+        `Pelanggan "${customer.name}" tersimpan di perangkat ini, tetapi GAGAL disimpan ke database. ` +
+        `${failure?.error || 'Periksa sesi login, organization_id, RLS, dan koneksi Supabase.'}`
+      );
+    }
     return customer;
   }
 
@@ -2365,7 +2388,12 @@ export class StorageService {
     });
 
     this.recalculateCustomerBalances();
-    this.syncPaymentToSupabase(payment);
+    await this.syncPaymentToSupabase(payment);
+    const syncFailed = this.getSyncFailures().some((f) => f.table === 'payments' && f.id === payment.id);
+    if (syncFailed) {
+      const failure = this.getSyncFailures().find((f) => f.table === 'payments' && f.id === payment.id);
+      throw new Error(`Pembayaran ${payment.paymentNumber} tersimpan lokal tetapi gagal disimpan ke database. ${failure?.error || ''}`);
+    }
     return payment;
   }
 
@@ -2433,7 +2461,12 @@ export class StorageService {
       letters[index] = updated;
       this.setItem(STORAGE_KEYS.BILLING_LETTERS, letters);
       this.addAuditLog('update', 'billing_letters', updated.id, updated.letterNumber, `Memperbarui surat tagihan ${updated.letterNumber}`);
-      this.syncBillingLetterToSupabase(updated);
+      await this.syncBillingLetterToSupabase(updated);
+      const syncFailed = this.getSyncFailures().some((f) => f.table === 'billing_letters' && f.id === updated.id);
+      if (syncFailed) {
+        const failure = this.getSyncFailures().find((f) => f.table === 'billing_letters' && f.id === updated.id);
+        throw new Error(`Surat tagihan "${updated.letterNumber}" tersimpan lokal tetapi gagal disimpan ke database. ${failure?.error || ''}`);
+      }
       return updated;
     }
 
@@ -2506,14 +2539,14 @@ export class StorageService {
     return true;
   }
 
-  public static createBillingLetter(data: {
+  public static async createBillingLetter(data: {
     invoiceId: string;
     letterType: BillingLetter['letterType'];
     letterDate: string;
     extendedDueDate: string;
     subject: string;
     bodyText: string;
-  }): BillingLetter {
+  }): Promise<BillingLetter> {
     const invoice = this.getInvoiceById(data.invoiceId);
     if (!invoice) throw new Error('Invoice tidak ditemukan');
 
@@ -2557,7 +2590,12 @@ export class StorageService {
     const letters = this.getBillingLetters();
     letters.unshift(letter);
     this.setItem(STORAGE_KEYS.BILLING_LETTERS, letters);
-    this.syncBillingLetterToSupabase(letter);
+    await this.syncBillingLetterToSupabase(letter);
+    const syncFailed = this.getSyncFailures().some((f) => f.table === 'billing_letters' && f.id === letter.id);
+    if (syncFailed) {
+      const failure = this.getSyncFailures().find((f) => f.table === 'billing_letters' && f.id === letter.id);
+      throw new Error(`Surat tagihan "${letter.letterNumber}" tersimpan lokal tetapi gagal disimpan ke database. ${failure?.error || ''}`);
+    }
 
     // Create Document
     this.addDocument({

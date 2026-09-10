@@ -53,3 +53,33 @@ before those modules are treated as production-authoritative records.
 ## FASE 2E — Accounting & Billing Focus
 
 Tax reporting and Bank Reconciliation are no longer application modules. Coretax remains the external reporting destination. Financial reports are generated from Posted accounting data and can be printed/exported to PDF and Excel-compatible format. Payment Gateway uses a server-side `/payment-links` adapter; gateway secrets never belong in the frontend.
+
+
+## Deployment contract (Vercel + Supabase)
+
+This project is a Vite SPA with Vercel serverless API handlers under `/api`.
+
+### Required Vercel environment variables
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+For Midtrans payment endpoints also set:
+- `MIDTRANS_SERVER_KEY`
+- `MIDTRANS_ENV` (`sandbox` or `production`)
+- `MIDTRANS_EXPIRY_MINUTES` (optional; defaults to 1440)
+
+`SUPABASE_SERVICE_ROLE_KEY` and `MIDTRANS_SERVER_KEY` must never use the `VITE_` prefix.
+
+### Build
+```bash
+npm ci
+npm run lint
+npm run build
+```
+
+Apply all SQL migrations in `supabase/` to the same Supabase project before enabling production writes. In particular, the costing feature requires `supabase/migration_v21_costing.sql`.
+
+### Vercel
+`vercel.json` uses `dist` as the Vite output and keeps SPA routes working while Vercel serves `/api/*` as serverless functions.

@@ -189,6 +189,60 @@
     -webkit-print-color-adjust: exact !important;
   }
 
+  /* Invoice footer: keep the signature area in the right half of the document.
+     The date and company name share exactly the same right edge. */
+  #printable-invoice .invoice-footer-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    width: 100% !important;
+    align-items: start !important;
+  }
+
+  #printable-invoice .invoice-footer-grid .signature-column {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    justify-self: stretch !important;
+    align-self: start !important;
+  }
+
+  #printable-invoice .invoice-footer-grid .signature-date {
+    width: 100% !important;
+    margin: 0 !important;
+    text-align: right !important;
+  }
+
+  #printable-invoice .invoice-footer-grid .signature-mark {
+    width: 100% !important;
+    justify-content: flex-end !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  #printable-invoice .invoice-footer-grid .signature-mark > * {
+    margin-left: auto !important;
+    margin-right: 0 !important;
+  }
+
+  #printable-invoice .invoice-footer-grid .signature-person {
+    width: 100% !important;
+    text-align: right !important;
+  }
+
+  #printable-invoice .invoice-footer-grid .signature-person p {
+    width: 100% !important;
+    text-align: right !important;
+  }
+
+  #printable-invoice .invoice-footer-grid .signature-date p {
+    display: block !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    text-align: right !important;
+  }
+
   /* Prevent awkward page breaks inside a single row/section, while still
      allowing long tables (e.g. laporan neraca / buku besar) to flow across
      multiple A4 pages. Note: `table` itself must NOT be in this list — that
