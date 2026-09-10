@@ -282,7 +282,7 @@ export interface AuditLog {
   userName: string;
   userRole: UserRole;
   action: 'create' | 'update' | 'delete' | 'send' | 'pay' | 'cancel' | 'status_change' | 'reconcile';
-  module: 'invoices' | 'payments' | 'customers' | 'billing_letters' | 'products' | 'settings' | 'auth' | 'reconciliation' | 'documents' | 'business_documents' | 'expenses' | 'vendors' | 'purchases';
+  module: 'invoices' | 'payments' | 'customers' | 'billing_letters' | 'products' | 'settings' | 'auth' | 'reconciliation' | 'documents' | 'business_documents' | 'expenses' | 'vendors' | 'purchases' | 'costing';
   recordId: string;
   recordTitle: string;
   entityType?: string;
@@ -417,6 +417,41 @@ export interface BusinessDocument {
   updatedAt: string;
 }
 
+
+// =========================================================================
+// COSTING & PROFIT ("Anti-Boncos Engine")
+// Selalu melekat pada satu invoice/tender (bukan data global). Satu costing
+// aktif per invoice (upsert). Rumus perhitungan hidup di lib/costingCalc.ts.
+// =========================================================================
+export type CostInputType = 'rp' | 'percent';
+export type CostBasis = 'nilai_tender' | 'hpp' | 'biaya_langsung';
+
+export interface CostingComponent {
+  id: string;
+  name: string;
+  inputType: CostInputType;
+  value: number; // nominal Rp bila 'rp', angka persen bila 'percent'
+  basis?: CostBasis; // wajib bila inputType='percent'
+  isDirectCost: boolean; // bagian dari "Biaya Langsung"?
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface Costing {
+  id: string;
+  invoiceId: string;
+  organizationId: string;
+  customerId?: string;
+  customerName?: string;
+  transactionDate?: string; // tanggal transaksi (mirror issueDate invoice)
+  tenderValue: number; // nilai tender/invoice
+  hppBarang: number;
+  targetMargin: number; // persen
+  components: CostingComponent[];
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Vendor { id:string; code:string; name:string; contactName?:string; email?:string; phone?:string; address?:string; isActive:boolean; createdAt:string; }
 export type PurchaseStatus = 'DRAFT'|'RECEIVED'|'CANCELLED';

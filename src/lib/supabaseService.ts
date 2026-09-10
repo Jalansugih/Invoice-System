@@ -14,6 +14,7 @@ import {
   BankTransaction,
   BankAccount,
   BusinessDocument,
+  Costing,
 } from '../types';
 
 export interface MigrationResult {
@@ -1087,6 +1088,119 @@ export class SupabaseService {
       return !error;
     } catch (e) {
       console.error('Supabase saveAuditLog error:', e);
+      return false;
+    }
+  }
+
+  // =========================================================================
+  // 8b. COSTING (Anti-Boncos Engine)
+  // Tabel costings + costing_components (lihat migration_v21_costing.sql).
+  // supabase di-cast ke any karena tabel ini belum ada di tipe Database yang
+  // di-generate - pola yang sama dipakai vendor/purchase.
+  // =========================================================================
+  public static async fetchCostings(orgId: string): Promise<Costing[] | null> {
+    if (!isSupabaseConfigured) return [];
+
+    try {
+      const { data, error } = await (supabase as any)
+        .from('costings')
+        .select(`*, costing_components (*)`)
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map((c: any) => ({
+        id: c.id,
+        invoiceId: c.invoice_id,
+        organizationId: c.organization_id,
+        customerId: c.customer_id || undefined,
+        customerName: c.customer_name || undefined,
+        transactionDate: c.transaction_date || undefined,
+        tenderValue: Number(c.tender_value) || 0,
+        hppBarang: Number(c.hpp_barang) || 0,
+        targetMargin: Number(c.target_margin) || 0,
+        createdBy: c.created_by || undefined,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at || c.created_at,
+        components: (c.costing_components || [])
+          .map((k: any) => ({
+            id: k.id,
+            name: k.name,
+            inputType: (k.input_type as 'rp' | 'percent') || 'rp',
+            value: Number(k.value) || 0,
+            basis: k.basis || undefined,
+            isDirectCost: !!k.is_direct_cost,
+            sortOrder: Number(k.sort_order) || 0,
+            isActive: k.is_active !== false,
+          }))
+          .sort((a: any, b: any) => a.sortOrder - b.sortOrder),
+      })) as Costing[];
+    } catch (e) {
+      console.error('Supabase fetchCostings error:', e);
+      return null;
+    }
+  }
+
+  public static async saveCosting(costing: Costing, orgId: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+
+    try {
+      // 1. Upsert costing header (unique on invoice_id).
+      const { error: headErr } = await (supabase as any).from('costings').upsert(
+        {
+          id: costing.id,
+          organization_id: orgId,
+          invoice_id: costing.invoiceId,
+          customer_id: costing.customerId || null,
+          customer_name: costing.customerName || null,
+          transaction_date: costing.transactionDate || null,
+          tender_value: costing.tenderValue,
+          hpp_barang: costing.hppBarang,
+          target_margin: costing.targetMargin,
+        },
+        { onConflict: 'invoice_id' }
+      );
+      if (headErr) throw headErr;
+
+      // 2. Replace child components (delete-then-insert keeps it simple &
+      //    avoids stale rows when a component is removed in the UI).
+      const { error: delErr } = await (supabase as any)
+        .from('costing_components')
+        .delete()
+        .eq('costing_id', costing.id);
+      if (delErr) throw delErr;
+
+      const rows = (costing.components || []).map((k) => ({
+        id: k.id,
+        costing_id: costing.id,
+        name: k.name,
+        input_type: k.inputType,
+        value: k.value,
+        basis: k.inputType === 'percent' ? k.basis || 'nilai_tender' : null,
+        is_direct_cost: !!k.isDirectCost,
+        sort_order: k.sortOrder,
+        is_active: k.isActive !== false,
+      }));
+      if (rows.length > 0) {
+        const { error: insErr } = await (supabase as any).from('costing_components').insert(rows);
+        if (insErr) throw insErr;
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Supabase saveCosting error:', e);
+      return false;
+    }
+  }
+
+  public static async deleteCosting(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { error } = await (supabase as any).from('costings').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      console.error('Supabase deleteCosting error:', e);
       return false;
     }
   }

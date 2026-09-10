@@ -4,6 +4,7 @@ import { StorageService } from '../../lib/storage';
 import { formatRupiah, formatIndoDate, getInvoiceStatusBadge, printElement } from '../../lib/utils';
 import { exportElementToPdf } from '../../lib/pdfExport';
 import { InvoicePrintView } from './InvoicePrintView';
+import { CostingPanel } from './CostingPanel';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { ConfirmDialog } from '../ui/ConfirmDialog';

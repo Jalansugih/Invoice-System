@@ -16,6 +16,8 @@ import {
   BankTransaction,
   BankFeedConnection,
   ReconciliationSummary,
+  Costing,
+  CostingComponent,
 } from '../types';
 import { formatDocNumber, getDaysOverdue } from './utils';
 import { SupabaseService } from './supabaseService';
@@ -59,6 +61,7 @@ const STORAGE_KEYS = {
   INVENTORY_MOVEMENTS: 'billingflow_inventory_movements',
   VENDORS: 'billingflow_vendors',
   PURCHASES: 'billingflow_purchases',
+  COSTINGS: 'billingflow_costings',
   INVOICES: 'billingflow_invoices',
   PAYMENTS: 'billingflow_payments',
   BILLING_LETTERS: 'billingflow_billing_letters',
@@ -1510,7 +1513,7 @@ export class StorageService {
       const orgId = organizationId || this.getSyncOrgId();
       if (!orgId) return false;
 
-      const [customers, invoices, payments, products, billingLetters, documents, businessDocuments, auditLogs, organization, vendors, purchases] = await Promise.all([
+      const [customers, invoices, payments, products, billingLetters, documents, businessDocuments, auditLogs, organization, vendors, purchases, costings] = await Promise.all([
         SupabaseService.fetchCustomers(orgId),
         SupabaseService.fetchInvoices(orgId),
         SupabaseService.fetchPayments(orgId),
@@ -1522,6 +1525,7 @@ export class StorageService {
         SupabaseService.getOrganization(orgId),
         SupabaseService.fetchVendors(orgId),
         SupabaseService.fetchPurchases(orgId),
+        SupabaseService.fetchCostings(orgId),
       ]);
 
       localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
@@ -1535,6 +1539,7 @@ export class StorageService {
       if (products !== null) localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
       if (vendors !== null) localStorage.setItem(STORAGE_KEYS.VENDORS, JSON.stringify(vendors));
       if (purchases !== null) localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases));
+      if (costings !== null) localStorage.setItem(STORAGE_KEYS.COSTINGS, JSON.stringify(costings));
       if (billingLetters !== null) localStorage.setItem(STORAGE_KEYS.BILLING_LETTERS, JSON.stringify(billingLetters));
       if (documents !== null) localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(documents));
       localStorage.setItem(STORAGE_KEYS.BUSINESS_DOCUMENTS, JSON.stringify(businessDocuments));
@@ -3516,6 +3521,101 @@ export class StorageService {
       const purchases=this.getPurchases(); const i=purchases.findIndex((p:any)=>p.id===purchaseId); if(i>=0){purchases[i]={...purchases[i],paidAmount:Number(cloud.paid_amount),paymentStatus:cloud.payment_status,updatedAt:new Date().toISOString()}; this.setItem(STORAGE_KEYS.PURCHASES,purchases);} return cloud;
     }}
     throw new Error('Pembayaran pembelian membutuhkan Supabase agar hutang dan jurnal tetap atomic.');
+  }
+
+  // =========================================================================
+  // COSTING & PROFIT (Anti-Boncos Engine)
+  // Melekat 1:1 pada invoice. Menyimpan INPUT saja - semua angka turunan
+  // (BEP, harga target, margin, status) dihitung di lib/costingCalc.ts.
+  // =========================================================================
+  public static getCostings(): Costing[] {
+    return this.getItem<Costing[]>(STORAGE_KEYS.COSTINGS, []);
+  }
+
+  public static getCostingByInvoiceId(invoiceId: string): Costing | undefined {
+    return this.getCostings().find((c) => c.invoiceId === invoiceId);
+  }
+
+  /**
+   * Simpan/replace costing untuk sebuah invoice (satu costing per invoice).
+   * Mengembalikan Costing tersimpan. Sinkron ke Supabase mengikuti pola tracked-sync.
+   */
+  public static saveCosting(input: {
+    invoiceId: string;
+    customerId?: string;
+    customerName?: string;
+    transactionDate?: string;
+    tenderValue: number;
+    hppBarang: number;
+    targetMargin: number;
+    components: CostingComponent[];
+  }): Costing {
+    if (!input.invoiceId) throw new Error('Costing harus terkait dengan sebuah invoice.');
+    const all = this.getCostings();
+    const now = new Date().toISOString();
+    const existing = all.find((c) => c.invoiceId === input.invoiceId);
+    const orgId = this.getSyncOrgId() || this.getOrganization().id;
+
+    const components: CostingComponent[] = (input.components || []).map((k, idx) => ({
+      id: k.id && isValidUUID(k.id) ? k.id : generateId(),
+      name: k.name,
+      inputType: k.inputType,
+      value: Number(k.value) || 0,
+      basis: k.inputType === 'percent' ? k.basis || 'nilai_tender' : undefined,
+      isDirectCost: !!k.isDirectCost,
+      sortOrder: typeof k.sortOrder === 'number' ? k.sortOrder : idx,
+      isActive: k.isActive !== false,
+    }));
+
+    const costing: Costing = {
+      id: existing?.id && isValidUUID(existing.id) ? existing.id : generateId(),
+      invoiceId: input.invoiceId,
+      organizationId: orgId,
+      customerId: input.customerId,
+      customerName: input.customerName,
+      transactionDate: input.transactionDate,
+      tenderValue: Number(input.tenderValue) || 0,
+      hppBarang: Number(input.hppBarang) || 0,
+      targetMargin: Number(input.targetMargin) || 0,
+      components,
+      createdBy: existing?.createdBy || this.getCurrentUser()?.id,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+
+    const idx = all.findIndex((c) => c.invoiceId === input.invoiceId);
+    if (idx >= 0) all[idx] = costing;
+    else all.unshift(costing);
+    this.setItem(STORAGE_KEYS.COSTINGS, all);
+
+    this.addAuditLog(
+      existing ? 'update' : 'create',
+      'costing',
+      costing.id,
+      costing.customerName || costing.invoiceId,
+      `Menyimpan analisis costing (margin target ${costing.targetMargin}%)`
+    );
+    this.syncCostingToSupabase(costing);
+    return costing;
+  }
+
+  public static deleteCostingByInvoiceId(invoiceId: string): void {
+    const all = this.getCostings();
+    const target = all.find((c) => c.invoiceId === invoiceId);
+    if (!target) return;
+    this.setItem(STORAGE_KEYS.COSTINGS, all.filter((c) => c.invoiceId !== invoiceId));
+    this.addAuditLog('delete', 'costing', target.id, target.customerName || invoiceId, 'Menghapus analisis costing');
+    SupabaseService.deleteCosting(target.id).catch((e) =>
+      console.error('Gagal menghapus costing di Supabase:', e)
+    );
+  }
+
+  private static syncCostingToSupabase(costing: Costing) {
+    const orgId = this.getSyncOrgId();
+    if (!orgId || !isValidUUID(costing.id)) return;
+    this.trackedSync('costings', costing.id, costing.customerName || costing.invoiceId, () =>
+      SupabaseService.saveCosting(costing, orgId)
+    );
   }
 
 }
