@@ -5,7 +5,7 @@ import {
   ChevronRight, Building2, ShieldCheck, Receipt,
   ClipboardList, BookOpen, ChevronDown, Landmark,
   ShoppingCart, Boxes,
-  DatabaseBackup, Percent, FileBarChart2, Hash, Database,
+  DatabaseBackup, FileBarChart2, Hash, Database, BookMarked,
 } from 'lucide-react';
 import { StorageService } from '../../lib/storage';
 import { cn } from '../../lib/utils';
@@ -79,13 +79,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'report_balance_sheet', label: 'Neraca', icon: Landmark },
         { id: 'report_cash_flow', label: 'Arus Kas', icon: Wallet },
         { id: 'report_general_ledger', label: 'Buku Besar', icon: BookOpen },
-        { id: 'report_tax', label: 'Laporan Pajak', icon: Percent },
         { id: 'report_stock', label: 'Laporan Stok', icon: Boxes },
       ],
     },
     {
       id: 'account-system', label: 'Akun & Sistem', icon: ShieldCheck,
       items: [
+        { id: 'chart_of_accounts', label: 'Bagan Akun', icon: BookMarked },
         {
           id: 'settings', label: 'Pengaturan', icon: Settings,
           children: [

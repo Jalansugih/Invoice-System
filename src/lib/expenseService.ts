@@ -1,9 +1,10 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { generateId, StorageService } from './storage';
 import { Account, Expense, ExpenseItem, ExpensePayment, ExpensePaymentStatus } from '../types';
+import type { ExpensePaymentRow, ExpenseItemRow, JournalEntryRow, JournalLineRow } from '../types/database';
 
 const EXPENSE_STORAGE_KEY = 'billingflow_expenses';
-const ACCOUNT_STORAGE_KEY = 'billingflow_accounts';
+export const ACCOUNT_STORAGE_KEY = 'billingflow_accounts';
 
 const DEFAULT_ACCOUNTS: Account[] = [
   { id: '00000000-0000-4000-8100-000000000101', code: '1-1000', name: 'Kas', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
@@ -62,13 +63,50 @@ export class ExpenseService {
   static async list(orgId?: string): Promise<Expense[]> {
     if (isSupabaseConfigured && orgId) {
       try {
-        const { data, error } = await supabase.from('expense_transactions' as any).select('*, expense_items(*)').eq('organization_id', orgId).order('transaction_date', { ascending: false }).order('created_at', { ascending: false });
+        // Fetch parent and child rows separately. The generated Database type does not
+        // declare Supabase relationship metadata, so an embedded `expense_items(*)`
+        // select is rejected by PostgREST/type inference even though the FK exists.
+        const { data, error } = await supabase
+          .from('expense_transactions' as any)
+          .select('*')
+          .eq('organization_id', orgId)
+          .order('transaction_date', { ascending: false })
+          .order('created_at', { ascending: false });
         if (error) throw error;
         const mapped = (data || []).map(this.mapRow);
         const ids = mapped.map(e => e.id);
         if (ids.length) {
-          const { data: paymentRows } = await supabase.from('expense_payments' as any).select('*').eq('organization_id', orgId).in('expense_id', ids).order('payment_date', { ascending: false });
-          for (const row of paymentRows || []) {
+          const { data: itemData, error: itemError } = await supabase
+            .from('expense_items' as any)
+            .select('*')
+            .in('expense_id', ids);
+          if (itemError) throw itemError;
+          const itemRows = (itemData || []) as unknown as ExpenseItemRow[];
+          for (const target of mapped) {
+            target.items = itemRows
+              .filter(item => item.expense_id === target.id)
+              .map(item => ({
+                id: item.id,
+                accountId: item.account_id,
+                description: item.description,
+                quantity: Number(item.quantity) || 0,
+                unitPrice: Number(item.unit_price) || 0,
+                taxRate: Number(item.tax_rate) || 0,
+                lineTotal: Number(item.line_total) || 0,
+                taxAmount: Number(item.tax_amount) || 0
+              }));
+          }
+        }
+        if (ids.length) {
+          const { data: paymentData, error: paymentError } = await supabase
+            .from('expense_payments' as any)
+            .select('*')
+            .eq('organization_id', orgId)
+            .in('expense_id', ids)
+            .order('payment_date', { ascending: false });
+          if (paymentError) throw paymentError;
+          const paymentRows = (paymentData || []) as unknown as ExpensePaymentRow[];
+          for (const row of paymentRows) {
             const target = mapped.find(e => e.id === row.expense_id);
             if (target) {
               const payment: ExpensePayment = { id: row.id, expenseId: row.expense_id, paymentDate: row.payment_date, amount: Number(row.amount)||0, paymentAccountId: row.payment_account_id, referenceNumber: row.reference_number || undefined, notes: row.notes || undefined, createdAt: row.created_at, journalNumber: undefined };
@@ -82,7 +120,7 @@ export class ExpenseService {
           for (const target of mapped) {
             if (target.paymentStatus === 'PAID' && !(target.paidAmount || 0)) target.paidAmount = target.totalAmount;
           }
-          const paymentIds = (paymentRows || []).map((p: any) => p.id).filter(Boolean);
+          const paymentIds = paymentRows.map(p => p.id).filter(Boolean);
           if (paymentIds.length) {
             const { data: paymentJournals } = await supabase
               .from('journal_entries' as any)
@@ -90,7 +128,8 @@ export class ExpenseService {
               .eq('organization_id', orgId)
               .eq('reference_type', 'expense_payment')
               .in('reference_id', paymentIds);
-            for (const j of paymentJournals || []) {
+            const journalRows = (paymentJournals || []) as unknown as Pick<JournalEntryRow, 'reference_id' | 'journal_number'>[];
+            for (const j of journalRows) {
               for (const target of mapped) {
                 const payment = (target.payments || []).find(p => p.id === j.reference_id);
                 if (payment) payment.journalNumber = j.journal_number;
@@ -99,11 +138,41 @@ export class ExpenseService {
           }
         }
         if (ids.length) {
-          const { data: journals, error: journalError } = await supabase.from('journal_entries' as any).select('id,reference_id,journal_number,journal_date,status,journal_lines(account_id,debit,credit,description)').eq('organization_id', orgId).eq('reference_type', 'expense').in('reference_id', ids);
+          // Do not embed journal_lines here. The generated Supabase schema intentionally
+          // has no inferred Relationships metadata, so nested selects produce
+          // SelectQueryError and make otherwise valid rows untyped. Fetch the two
+          // tables explicitly and join them in application code.
+          const { data: journalData, error: journalError } = await supabase
+            .from('journal_entries' as any)
+            .select('id,reference_id,journal_number,journal_date,status')
+            .eq('organization_id', orgId)
+            .eq('reference_type', 'expense')
+            .in('reference_id', ids);
           if (!journalError) {
-            for (const j of journals || []) {
+            const journals = (journalData || []) as unknown as Pick<JournalEntryRow, 'id' | 'reference_id' | 'journal_number' | 'journal_date' | 'status'>[];
+            const journalIds = journals.map(j => j.id).filter(Boolean);
+            let lineRows: JournalLineRow[] = [];
+            if (journalIds.length) {
+              const { data: lineData, error: lineError } = await supabase
+                .from('journal_lines' as any)
+                .select('id,journal_entry_id,account_id,debit,credit,description')
+                .in('journal_entry_id', journalIds);
+              if (!lineError) lineRows = (lineData || []) as unknown as JournalLineRow[];
+            }
+            for (const j of journals) {
+              const lines = lineRows.filter(l => l.journal_entry_id === j.id);
               const target = mapped.find(e => e.id === j.reference_id);
-              if (target) target.journal = { journalNumber: j.journal_number, debit: (j.journal_lines || []).reduce((s:any,l:any)=>s+Number(l.debit||0),0), credit: (j.journal_lines || []).reduce((s:any,l:any)=>s+Number(l.credit||0),0), lines: (j.journal_lines || []).map((l:any)=>({ accountId:l.account_id, debit:Number(l.debit)||0, credit:Number(l.credit)||0, description:l.description||'' })) };
+              if (target) target.journal = {
+                journalNumber: j.journal_number,
+                debit: lines.reduce((sum, line) => sum + Number(line.debit || 0), 0),
+                credit: lines.reduce((sum, line) => sum + Number(line.credit || 0), 0),
+                lines: lines.map(line => ({
+                  accountId: line.account_id,
+                  debit: Number(line.debit) || 0,
+                  credit: Number(line.credit) || 0,
+                  description: line.description || ''
+                }))
+              };
             }
           }
         }

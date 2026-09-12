@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   BarChart3, CheckCircle2, Download, FileDown, FileWarning, Landmark, Printer,
   RefreshCw, WalletCards, ArrowUpRight, ArrowDownRight, ReceiptText, CreditCard,
-  ChevronDown, ChevronRight, Percent, Boxes, BookOpen,
+  ChevronDown, ChevronRight, Boxes, BookOpen,
 } from 'lucide-react';
 import { AccountingService, AccountingLine, FinancialStatements } from '../../lib/accountingService';
 import { useAuth } from '../auth/Auth';
@@ -11,7 +11,7 @@ import { Input } from '../ui/Input';
 import { exportToCSV, exportToExcel, formatIndoDate, formatRupiah, printElement } from '../../lib/utils';
 import { StorageService } from '../../lib/storage';
 
-type ReportTab = 'summary' | 'profitLoss' | 'balanceSheet' | 'cashFlow' | 'generalLedger' | 'tax' | 'stock';
+type ReportTab = 'summary' | 'profitLoss' | 'balanceSheet' | 'cashFlow' | 'generalLedger' | 'stock';
 
 const money = (value: number) => formatRupiah(Number(value) || 0);
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); };
@@ -85,7 +85,6 @@ export const FinancialReportsView: React.FC<{ initialReport?: ReportTab }> = ({ 
     { id: 'balanceSheet', label: 'Neraca', icon: Landmark },
     { id: 'cashFlow', label: 'Arus Kas', icon: WalletCards },
     { id: 'generalLedger', label: 'Buku Besar', icon: BookOpen },
-    { id: 'tax', label: 'Laporan Pajak', icon: Percent },
     { id: 'stock', label: 'Laporan Stok', icon: Boxes },
   ];
 
@@ -175,7 +174,6 @@ export const FinancialReportsView: React.FC<{ initialReport?: ReportTab }> = ({ 
         {activeReport === 'balanceSheet' && <div className="space-y-5"><LineTable lines={data.balanceSheet.assets} totalLabel="TOTAL ASET" total={data.balanceSheet.totalAssets} simple /><LineTable lines={data.balanceSheet.liabilities} totalLabel="TOTAL LIABILITAS" total={data.balanceSheet.totalLiabilities} simple /><LineTable lines={data.balanceSheet.equity} totalLabel="TOTAL EKUITAS" total={data.balanceSheet.totalEquity} simple /><div className={`rounded-xl border p-4 flex justify-between ${Math.abs(data.balanceSheet.balanceCheck) < 0.01 ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}><span className="font-semibold">Status Neraca</span><span className="font-mono font-bold">{Math.abs(data.balanceSheet.balanceCheck) < 0.01 ? '✓ Seimbang' : `Selisih ${money(data.balanceSheet.balanceCheck)}`}</span></div></div>}
         {activeReport === 'cashFlow' && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">{[['Saldo awal', data.cashFlow.openingCash], ['Kas masuk', data.cashFlow.inflows], ['Kas keluar', data.cashFlow.outflows], ['Arus kas bersih', data.cashFlow.netCashFlow], ['Saldo akhir', data.cashFlow.closingCash]].map(([label, value]) => <div key={label as string} className="rounded-xl border border-slate-200 bg-white p-5"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-lg font-bold tabular-nums">{money(value as number)}</div></div>)}</div>}
         {activeReport === 'generalLedger' && <ReportPlaceholder title="Buku Besar" description="Buku Besar menampilkan detail transaksi berdasarkan akun. Pilih akun dan periode untuk melihat debit, kredit, dan saldo secara rinci." icon={BookOpen} />}
-        {activeReport === 'tax' && <ReportPlaceholder title="Laporan Pajak" description="Laporan pajak akan menggunakan transaksi dan preferensi pajak perusahaan. Tidak ada angka pajak yang dibuat secara manual jika datanya belum tersedia." icon={Percent} />}
         {activeReport === 'stock' && <ReportPlaceholder title="Laporan Stok" description="Laporan stok menampilkan posisi persediaan dan pergerakannya berdasarkan inventory engine yang sudah ada." icon={Boxes} />}
       </div>}
 

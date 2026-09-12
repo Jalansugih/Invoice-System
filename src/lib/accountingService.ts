@@ -52,7 +52,7 @@ export interface FinancialStatements {
 
 const n = (v: unknown) => Number(v) || 0;
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-const localAccounts: Account[] = [
+export const localAccounts: Account[] = [
   { id: '00000000-0000-4000-8100-000000000101', code: '1-1000', name: 'Kas', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
   { id: '00000000-0000-4000-8100-000000000102', code: '1-1100', name: 'Bank BCA', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
   { id: '00000000-0000-4000-8100-000000000103', code: '1-1200', name: 'Bank Mandiri', type: 'ASSET', normalBalance: 'DEBIT', isActive: true },
