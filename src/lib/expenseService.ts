@@ -53,7 +53,7 @@ export class ExpenseService {
         const { data, error } = await supabase.from('accounts' as any).select('*').eq('organization_id', orgId).eq('is_active', true).order('code');
         if (error) throw error;
         return (data || []).map((a: any) => ({ id: a.id, code: a.code, name: a.name, type: a.account_type, normalBalance: a.normal_balance, isActive: a.is_active !== false }));
-      } catch (e) { console.error('ExpenseService.getAccounts:', e); }
+      } catch (e) { throw e; }
     }
     const local = readLocal<Account[]>(ACCOUNT_STORAGE_KEY, DEFAULT_ACCOUNTS);
     writeLocal(ACCOUNT_STORAGE_KEY, local);
@@ -178,7 +178,7 @@ export class ExpenseService {
         }
         writeLocal(EXPENSE_STORAGE_KEY, mapped);
         return mapped;
-      } catch (e) { console.error('ExpenseService.list:', e); }
+      } catch (e) { throw e; }
     }
     return readLocal<Expense[]>(EXPENSE_STORAGE_KEY, []);
   }

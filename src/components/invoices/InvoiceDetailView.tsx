@@ -90,9 +90,9 @@ export const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({
     }
   };
 
-  const handleDeleteInvoice = () => {
+  const handleDeleteInvoice = async () => {
     try {
-      StorageService.deleteInvoice(invoice.id);
+      await StorageService.deleteInvoice(invoice.id);
       setIsDeleteDialogOpen(false);
       onInvoiceDeleted();
     } catch (err: any) {

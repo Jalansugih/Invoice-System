@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Payment } from '../../types';
 import { StorageService } from '../../lib/storage';
+import { useAuth } from '../auth/Auth';
 import { formatRupiah, formatIndoDate, exportToCSV } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -24,6 +25,9 @@ export const PaymentList: React.FC<PaymentListProps> = ({
   onViewReceipt,
   onCreateNewPayment,
 }) => {
+  const { canPerformAction } = useAuth();
+  const canCreate = canPerformAction('record_payment');
+  const canDelete = canPerformAction('delete_records');
   const [payments, setPayments] = useState(StorageService.getPayments());
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('all');
@@ -71,10 +75,10 @@ export const PaymentList: React.FC<PaymentListProps> = ({
     exportToCSV(`Laporan_Penerimaan_Pembayaran_${new Date().toISOString().split('T')[0]}`, data);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!paymentToDelete) return;
     try {
-      StorageService.deletePayment(paymentToDelete.id);
+      await StorageService.deletePayment(paymentToDelete.id);
       setPaymentToDelete(null);
       refreshData();
     } catch (err: any) {
@@ -110,6 +114,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({
           <Button
             size="sm"
             onClick={onCreateNewPayment}
+            disabled={!canCreate}
             leftIcon={<Plus className="w-4 h-4" />}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
@@ -271,13 +276,13 @@ export const PaymentList: React.FC<PaymentListProps> = ({
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        <button
+                        {canDelete && <button
                           onClick={() => setPaymentToDelete(p)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                           title="Delete Receipt"
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button>}
                       </div>
                     </td>
                   </tr>

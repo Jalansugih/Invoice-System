@@ -10,6 +10,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { exportToCSV, exportToExcel, formatIndoDate, formatRupiah, printElement } from '../../lib/utils';
 import { StorageService } from '../../lib/storage';
+import { isSupabaseConfigured } from '../../lib/supabase';
 
 type ReportTab = 'summary' | 'profitLoss' | 'balanceSheet' | 'cashFlow' | 'generalLedger' | 'stock';
 
@@ -122,6 +123,8 @@ export const FinancialReportsView: React.FC<{ initialReport?: ReportTab }> = ({ 
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-col lg:flex-row lg:items-end gap-3"><div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3"><Input label="Mulai periode" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /><Input label="Sampai tanggal" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div><Button onClick={load} disabled={loading} className="h-10">{loading ? 'Memuat...' : 'Terapkan Periode'}</Button></div><div className="flex flex-wrap gap-2 mt-3"><span className="text-xs text-slate-400 self-center mr-1">Periode cepat:</span>{[['Bulan Ini', monthStart(), today()], ['Hari Ini', today(), today()]].map(([label, s, e]) => <button key={label} onClick={() => { setStartDate(s); setEndDate(e); }} className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600">{label}</button>)}</div></div>
+
+      {data?.source === 'local' && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3"><FileWarning className="w-5 h-5 text-amber-600 mt-0.5 shrink-0"/><div><div className="font-semibold text-amber-900">Laporan menggunakan data lokal</div><div className="text-sm text-amber-800 mt-1">Supabase belum dikonfigurasi. Angka laporan ini berasal dari data perangkat/demo dan bukan saldo server.</div></div></div>}
 
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 flex items-center justify-between gap-4"><div><div className="font-semibold text-rose-800">Laporan belum bisa ditampilkan</div><div className="text-sm text-rose-700 mt-1">{error}</div></div><Button variant="outline" size="sm" onClick={load}><RefreshCw className="w-4 h-4 mr-1" /> Coba Lagi</Button></div>}
 

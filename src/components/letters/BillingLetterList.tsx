@@ -65,7 +65,7 @@ export const BillingLetterList: React.FC<BillingLetterListProps> = ({
     exportToCSV(`Daftar_Surat_Tagihan_${new Date().toISOString().split('T')[0]}`, data);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!letterToDelete) return;
     try {
       StorageService.deleteBillingLetter(letterToDelete.id);

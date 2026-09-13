@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Invoice } from '../../types';
 import { StorageService } from '../../lib/storage';
+import { SupabaseService } from '../../lib/supabaseService';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { useAuth } from '../auth/Auth';
 import { formatRupiah, formatIndoDate, exportToCSV } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -32,8 +35,18 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
   onCreateLetter,
   onCreateNewInvoice,
 }) => {
-  const [invoices, setInvoices] = useState(StorageService.getInvoices());
+  const { user, canPerformAction } = useAuth();
+  const canCreate = canPerformAction('create_draft');
+  const canEdit = canPerformAction('edit_all');
+  const canPay = canPerformAction('record_payment');
+  const canDelete = canPerformAction('delete_records');
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState(StorageService.getCustomers());
+  const [totalInvoices, setTotalInvoices] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const pageSize = 25;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -43,10 +56,22 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
 
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
 
-  const refreshData = () => {
-    setInvoices(StorageService.getInvoices());
-    setCustomers(StorageService.getCustomers());
+  const loadPage = async (targetPage = page) => {
+    setLoading(true); setLoadError('');
+    try {
+      setCustomers(StorageService.getCustomers());
+      if (isSupabaseConfigured && user?.organizationId) {
+        const result = await SupabaseService.fetchInvoicesPage(user.organizationId, targetPage, pageSize, searchQuery);
+        setInvoices(result.data); setTotalInvoices(result.count); setPage(targetPage);
+      } else {
+        const local = StorageService.getInvoices(); const q = searchQuery.trim().toLowerCase();
+        const filtered = local.filter(inv => !q || [inv.invoiceNumber,inv.customerName,inv.customerCompanyName,inv.poNumber,inv.referenceNumber].some(v => (v || '').toLowerCase().includes(q)));
+        setTotalInvoices(filtered.length); setInvoices(filtered.slice((targetPage-1)*pageSize,targetPage*pageSize)); setPage(targetPage);
+      }
+    } catch (e: any) { setLoadError(e?.message || 'Gagal memuat invoice dari Supabase.'); } finally { setLoading(false); }
   };
+  useEffect(() => { const t = window.setTimeout(() => { void loadPage(1); }, 250); return () => window.clearTimeout(t); }, [user?.organizationId, searchQuery]);
+  const refreshData = () => { void loadPage(page); };
 
   const filteredInvoices = useMemo(() => {
     const q = (searchQuery || '').trim().toLowerCase();
@@ -94,10 +119,10 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
     exportToCSV(`Daftar_Invoice_${new Date().toISOString().split('T')[0]}`, data);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!invoiceToDelete) return;
     try {
-      StorageService.deleteInvoice(invoiceToDelete.id);
+      await StorageService.deleteInvoice(invoiceToDelete.id);
       setInvoiceToDelete(null);
       refreshData();
     } catch (err: any) {
@@ -153,6 +178,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
           <Button
             size="sm"
             onClick={onCreateNewInvoice}
+            disabled={!canCreate}
             leftIcon={<Plus className="w-4 h-4" />}
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
@@ -169,7 +195,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
               Total Invoices (Filtered)
             </p>
             <p className="text-lg sm:text-xl xl:text-2xl font-bold text-slate-900 mt-1 tabular-nums tracking-tight truncate">
-              {filteredInvoices.length}
+              {totalInvoices}
             </p>
           </div>
           <p className="text-xs text-slate-500 mt-1.5 tabular-nums truncate">Value: {formatRupiah(totalInvoicedInView)}</p>
@@ -282,6 +308,8 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
         </div>
       </div>
 
+      {loadError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 flex items-center justify-between gap-3"><span>{loadError}</span><Button size="sm" variant="outline" onClick={() => void loadPage(page)}>Coba Lagi</Button></div>}
+
       {/* Invoices Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
@@ -307,7 +335,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
               ) : (
                 filteredInvoices.map((inv) => {
                   const isOverdue = inv.status === 'overdue';
-                  const canPay = inv.status !== 'paid' && inv.status !== 'cancelled';
+                  const invoiceCanPay = inv.status !== 'paid' && inv.status !== 'cancelled' && canPay;
 
                   return (
                     <tr
@@ -367,7 +395,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {canPay && (
+                          {invoiceCanPay && (
                             <button
                               onClick={() => onRecordPayment(inv)}
                               className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
@@ -377,7 +405,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
                             </button>
                           )}
 
-                          {(isOverdue || inv.outstandingAmount > 0) && (
+                          {(isOverdue || inv.outstandingAmount > 0) && canCreate && (
                             <button
                               onClick={() => onCreateLetter(inv)}
                               className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors cursor-pointer"
@@ -387,21 +415,21 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
                             </button>
                           )}
 
-                          <button
+                          {canEdit && <button
                             onClick={() => onEditInvoice(inv)}
                             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
                             title="Edit Invoice"
                           >
                             <Edit2 className="w-4 h-4" />
-                          </button>
+                          </button>}
 
-                          <button
+                          {canDelete && <button
                             onClick={() => setInvoiceToDelete(inv)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                             title="Delete Invoice"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
+                          </button>}
                         </div>
                       </td>
                     </tr>
@@ -412,6 +440,8 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
           </table>
         </div>
       </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500"><span>Halaman {page} dari {Math.max(1, Math.ceil(totalInvoices / pageSize))} · {totalInvoices} invoice</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={loading || page <= 1} onClick={() => void loadPage(page - 1)}>Sebelumnya</Button><Button size="sm" variant="outline" disabled={loading || page >= Math.max(1, Math.ceil(totalInvoices / pageSize))} onClick={() => void loadPage(page + 1)}>Berikutnya</Button></div></div>
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

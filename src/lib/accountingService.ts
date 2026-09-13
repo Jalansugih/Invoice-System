@@ -39,6 +39,7 @@ export interface FinancialStatements {
   };
   receivables: { balance: number };
   payables: { balance: number };
+  source?: 'supabase' | 'local';
   integrity: {
     postedJournals: number;
     unbalancedJournals: number;
@@ -203,6 +204,7 @@ function localStatements(startDate: string, endDate: string): FinancialStatement
     cashFlow: { openingCash: round2(cashCumulative - cashMovement), inflows: round2(inflows), outflows: round2(outflows), netCashFlow: round2(inflows - outflows), closingCash: round2(cashCumulative) },
     receivables: { balance: balanceFor(accountByCode('1-2000')!, (lines.get('cum:1-2000')?.debit || 0), (lines.get('cum:1-2000')?.credit || 0)) },
     payables: { balance: balanceFor(accountByCode('2-1000')!, (lines.get('cum:2-1000')?.debit || 0), (lines.get('cum:2-1000')?.credit || 0)) },
+    source: 'local',
     integrity: {
       postedJournals: invoices.filter(i => i.issueDate <= endDate).length +
         payments.filter(p => p.paymentDate <= endDate).length +
@@ -226,14 +228,12 @@ export class AccountingService {
         if (session.session) {
           const { data, error } = await supabase.rpc('get_financial_statements' as any, { p_start_date: startDate, p_end_date: endDate });
           if (error) throw new Error(error.message);
-          if (data) return data as FinancialStatements;
+          if (data) return { ...(data as FinancialStatements), source: 'supabase' };
         }
       } catch (e) {
-        // Server-side report unavailable (network hiccup, RLS, or the RPC not
-        // yet migrated on this project) — fall back to the local calculation
-        // below instead of failing the whole report screen.
-        console.warn('[AccountingService] Laporan server tidak tersedia, memakai perhitungan lokal sebagai cadangan:', e);
+        throw e;
       }
+      throw new Error('Laporan keuangan Supabase tidak mengembalikan data.');
     }
     return localStatements(startDate, endDate);
   }

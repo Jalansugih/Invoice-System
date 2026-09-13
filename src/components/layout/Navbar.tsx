@@ -43,7 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onQuickInvoice,
   onOpenGuide,
 }) => {
-  const { user: authUser, signOut, signInDemoUser, refreshSession, orgBootstrapError, retryOrgBootstrap } = useAuth();
+  const { user: authUser, signOut, signInDemoUser, refreshSession, orgBootstrapError, retryOrgBootstrap, canPerformAction } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetryingSync, setIsRetryingSync] = useState(false);
   const [isRetryingOrgBootstrap, setIsRetryingOrgBootstrap] = useState(false);
@@ -84,6 +84,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   const handleRoleChange = (newRole: UserRole) => {
+    if (!canPerformAction('org_settings')) return;
     signInDemoUser(newRole);
   };
 
@@ -217,6 +218,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <select
             id="select-user-role"
             value={user.role}
+            disabled={!canPerformAction('org_settings')}
             onChange={(e) => handleRoleChange(e.target.value as UserRole)}
             className="text-xs font-medium py-1 px-2 rounded-md border border-slate-200 bg-slate-50 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
             title="Switch User Role"

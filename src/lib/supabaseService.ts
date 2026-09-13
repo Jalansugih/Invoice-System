@@ -134,7 +134,7 @@ export class SupabaseService {
         throw new Error(msg);
       }
       console.error('Supabase recordPaymentAtomic error:', e);
-      return null;
+      throw e;
     }
   }
 
@@ -252,7 +252,7 @@ export class SupabaseService {
       };
     } catch (e) {
       console.error('Supabase getOrganization error:', e);
-      return null;
+      throw e;
     }
   }
 
@@ -318,6 +318,19 @@ export class SupabaseService {
   // 2. CUSTOMERS
   // =========================================================================
 
+  public static async fetchCustomersPage(orgId: string, page = 1, pageSize = 25, search = '', status: 'all' | 'active' | 'has_outstanding' = 'all'): Promise<{ data: Customer[]; count: number; page: number; pageSize: number }> {
+    if (!isSupabaseConfigured) return { data: [], count: 0, page, pageSize };
+    const from = Math.max(0, (page - 1) * pageSize);
+    const to = from + pageSize - 1;
+    let query = supabase.from('customers').select('*', { count: 'exact' }).eq('organization_id', orgId).order('name').range(from, to);
+    if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,code.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%,npwp.ilike.%${search.trim()}%`);
+    if (status === 'active') query = query.eq('is_active', true);
+    if (status === 'has_outstanding') query = query.gt('total_outstanding', 0);
+    const { data, error, count } = await query;
+    if (error) throw error;
+    return { data: (data || []).map((c: any) => ({ id:c.id, code:c.code, name:c.name, companyName:c.company_name, npwp:c.npwp, email:c.email, phone:c.phone, address:c.address, city:c.city||'', province:c.province||'', postalCode:c.postal_code||'', pic:c.pic, picPhone:c.pic_phone||'', notes:c.notes||'', isActive:Boolean(c.is_active), createdAt:c.created_at, totalInvoiced:Number(c.total_invoiced)||0, totalPaid:Number(c.total_paid)||0, totalOutstanding:Number(c.total_outstanding)||0 })), count: count || 0, page, pageSize };
+  }
+
   public static async fetchCustomers(orgId: string): Promise<Customer[]> {
     if (!isSupabaseConfigured) return [];
 
@@ -353,7 +366,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchCustomers error:', e);
-      return [];
+      throw e;
     }
   }
 
@@ -395,12 +408,22 @@ export class SupabaseService {
   public static async deleteCustomer(customerId: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const { error } = await supabase.from('customers').delete().eq('id', customerId);
-    return !error;
+    if (error) throw error;
+    return true;
   }
 
   // =========================================================================
   // 3. PRODUCTS
   // =========================================================================
+
+  public static async fetchProductsPage(orgId: string, page = 1, pageSize = 25, search = ''): Promise<{ data: Product[]; count: number; page: number; pageSize: number }> {
+    if (!isSupabaseConfigured) return { data: [], count: 0, page, pageSize };
+    const from = Math.max(0, (page - 1) * pageSize); const to = from + pageSize - 1;
+    let query = supabase.from('products').select('*', { count: 'exact' }).eq('organization_id', orgId).order('name').range(from, to);
+    if (search.trim()) query = query.or(`name.ilike.%${search.trim()}%,code.ilike.%${search.trim()}%,description.ilike.%${search.trim()}%`);
+    const { data, error, count } = await query; if (error) throw error;
+    return { data: (data || []).map((p:any) => ({ id:p.id, code:p.code, name:p.name, category:p.category, description:p.description||'', unit:p.unit||'Unit', price:Number(p.price)||0, taxRate:Number(p.tax_rate)||11, isActive:Boolean(p.is_active), trackInventory:Boolean(p.track_inventory), costPrice:Number(p.cost_price)||0, minStock:Number(p.min_stock)||0, stockQty:Number(p.stock_qty)||0 })), count:count||0, page, pageSize };
+  }
 
   public static async fetchProducts(orgId: string): Promise<Product[] | null> {
     if (!isSupabaseConfigured) return [];
@@ -431,7 +454,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchProducts error:', e);
-      return null;
+      throw e;
     }
   }
 
@@ -545,7 +568,7 @@ export class SupabaseService {
         .eq('organization_id', orgId).eq('is_active', true).order('code');
       if (error) throw error;
       return data || [];
-    } catch (e) { console.error('Supabase fetchAccountingAccounts error:', e); return null; }
+    } catch (e) { console.error('Supabase fetchAccountingAccounts error:', e); throw e; }
   }
 
   public static async fetchPurchases(orgId: string): Promise<any[] | null> {
@@ -561,7 +584,7 @@ export class SupabaseService {
         items:(p.items || []).map((i:any)=>({id:i.id,productId:i.product_id,productName:i.product_name,quantity:Number(i.quantity)||0,unitCost:Number(i.unit_cost)||0,lineTotal:Number(i.line_total)||0})),
         payments:(p.payments || []).map((x:any)=>({id:x.id,paymentDate:x.payment_date,amount:Number(x.amount)||0,paymentAccountId:x.payment_account_id,referenceNumber:x.reference_number||undefined,notes:x.notes||undefined,journalEntryId:x.journal_entry_id,createdAt:x.created_at}))
       })) : [];
-    } catch (e) { console.error('Supabase fetchPurchases error:', e); return null; }
+    } catch (e) { console.error('Supabase fetchPurchases error:', e); throw e; }
   }
 
   public static async fetchVendors(orgId: string): Promise<any[] | null> {
@@ -570,7 +593,7 @@ export class SupabaseService {
       const { data, error } = await (supabase as any).from('vendors').select('*').eq('organization_id', orgId).order('name');
       if (error) throw error;
       return (data || []).map((v:any)=>({id:v.id,code:v.code,name:v.name,contactName:v.contact_name||undefined,email:v.email||undefined,phone:v.phone||undefined,address:v.address||undefined,isActive:Boolean(v.is_active),createdAt:v.created_at}));
-    } catch (e) { console.error('Supabase fetchVendors error:', e); return null; }
+    } catch (e) { console.error('Supabase fetchVendors error:', e); throw e; }
   }
 
   public static async saveVendor(vendor:any, orgId:string): Promise<boolean> {
@@ -583,7 +606,8 @@ export class SupabaseService {
   public static async deleteProduct(productId: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const { error } = await supabase.from('products').delete().eq('id', productId);
-    return !error;
+    if (error) throw error;
+    return true;
   }
 
   // =========================================================================
@@ -665,8 +689,38 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchInvoices error:', e);
-      return null;
+      throw e;
     }
+  }
+
+  public static async fetchInvoicesPage(orgId: string, page = 1, pageSize = 25, search = ''): Promise<{ data: Invoice[]; count: number; page: number; pageSize: number }> {
+    if (!isSupabaseConfigured) return { data: [], count: 0, page, pageSize };
+    const from = Math.max(0, (page - 1) * pageSize);
+    const to = from + pageSize - 1;
+    let query = supabase.from('invoices').select(`*, customers (name, company_name, email, phone, address, npwp)`, { count: 'exact' })
+      .eq('organization_id', orgId).order('created_at', { ascending: false }).range(from, to);
+    if (search.trim()) {
+      const q = search.trim();
+      query = query.or(`invoice_number.ilike.%${q}%,customer_name.ilike.%${q}%,customer_company_name.ilike.%${q}%,po_number.ilike.%${q}%,reference_number.ilike.%${q}%`);
+    }
+    const { data, error, count } = await query;
+    if (error) throw error;
+    return {
+      data: (data || []).map((inv: any) => ({
+        id: inv.id, invoiceNumber: inv.invoice_number, customerId: inv.customer_id,
+        customerName: inv.customers?.name || inv.customer_name || 'Customer', customerCompanyName: inv.customers?.company_name || inv.customer_company_name || '',
+        customerEmail: inv.customers?.email || inv.customer_email || '', customerPhone: inv.customers?.phone || inv.customer_phone || '',
+        customerAddress: inv.customers?.address || inv.customer_address || '', customerNpwp: inv.customers?.npwp || inv.customer_npwp || '',
+        issueDate: inv.issue_date, dueDate: inv.due_date, poNumber: inv.po_number || '', referenceNumber: inv.reference_number || '',
+        notes: inv.notes || '', paymentTerms: inv.payment_terms || '', subtotal: Number(inv.subtotal) || 0,
+        discountType: inv.discount_type || 'fixed', discountValue: Number(inv.discount_value) || 0, discountAmount: Number(inv.discount_amount) || 0,
+        taxableAmount: Math.max(0, (Number(inv.subtotal) || 0) - (Number(inv.discount_amount) || 0)), taxRate: Number(inv.tax_rate) || 11,
+        taxAmount: Number(inv.tax_amount) || 0, additionalCharges: Number(inv.additional_charges) || 0, grandTotal: Number(inv.grand_total) || 0,
+        paidAmount: Number(inv.paid_amount) || 0, outstandingAmount: Number(inv.outstanding_amount) || 0, status: inv.status,
+        createdAt: inv.created_at, updatedAt: inv.updated_at || inv.created_at, sentAt: inv.sent_at, viewedAt: inv.viewed_at, paidAt: inv.paid_at,
+        bankAccountId: inv.bank_account_id, items: [],
+      })), count: count || 0, page, pageSize,
+    };
   }
 
   public static async saveInvoice(invoice: Invoice, orgId: string): Promise<boolean> {
@@ -736,7 +790,7 @@ export class SupabaseService {
           // marks this invoice as sync-failed and it shows up for retry
           // instead of silently rotting with a header and no items.
           console.error('Failed to save invoice_items:', itemsError);
-          return false;
+          throw itemsError;
         }
       }
 
@@ -751,14 +805,15 @@ export class SupabaseService {
       return true;
     } catch (e) {
       console.error('Supabase saveInvoice exception:', e);
-      return false;
+      throw e;
     }
   }
 
   public static async deleteInvoice(invoiceId: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     const { error } = await supabase.from('invoices').delete().eq('id', invoiceId);
-    return !error;
+    if (error) throw error;
+    return true;
   }
 
   // =========================================================================
@@ -985,7 +1040,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchPayments error:', e);
-      return [];
+      throw e;
     }
   }
 
@@ -1022,10 +1077,11 @@ export class SupabaseService {
     if (!isSupabaseConfigured) return false;
     try {
       const { error } = await supabase.from('payments').delete().eq('id', paymentId);
-      return !error;
+      if (error) throw error;
+      return true;
     } catch (e) {
       console.error('Supabase deletePayment error:', e);
-      return false;
+      throw e;
     }
   }
 
@@ -1077,7 +1133,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchBillingLetters error:', e);
-      return null;
+      throw e;
     }
   }
 
@@ -1120,7 +1176,7 @@ export class SupabaseService {
       return !error;
     } catch (e) {
       console.error('Supabase deleteBillingLetter error:', e);
-      return false;
+      throw e;
     }
   }
 
@@ -1159,7 +1215,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchDocuments error:', e);
-      return null;
+      throw e;
     }
   }
 
@@ -1184,7 +1240,7 @@ export class SupabaseService {
       return !error;
     } catch (e) {
       console.error('Supabase saveDocument error:', e);
-      return false;
+      throw e;
     }
   }
 
@@ -1201,9 +1257,9 @@ export class SupabaseService {
         delivery_address: doc.deliveryAddress || null, notes: doc.notes || null, status: doc.status,
         items: JSON.parse(JSON.stringify(doc.items)), subtotal: doc.subtotal, tax_amount: doc.taxAmount, grand_total: doc.grandTotal, updated_at: doc.updatedAt,
       });
-      if (error) console.error('Supabase saveBusinessDocument error:', error);
-      return !error;
-    } catch (e) { console.error('Supabase saveBusinessDocument error:', e); return false; }
+      if (error) throw error;
+      return true;
+    } catch (e) { console.error('Supabase saveBusinessDocument error:', e); throw e; }
   }
 
   public static async fetchBusinessDocuments(orgId: string): Promise<BusinessDocument[]> {
@@ -1219,7 +1275,7 @@ export class SupabaseService {
         items: Array.isArray(row.items) ? row.items : [], subtotal: Number(row.subtotal) || 0, taxAmount: Number(row.tax_amount) || 0,
         grandTotal: Number(row.grand_total) || 0, createdAt: row.created_at, updatedAt: row.updated_at,
       }));
-    } catch (e) { console.error('Supabase fetchBusinessDocuments error:', e); return []; }
+    } catch (e) { console.error('Supabase fetchBusinessDocuments error:', e); throw e; }
   }
 
   // =========================================================================
@@ -1253,7 +1309,7 @@ export class SupabaseService {
       }));
     } catch (e) {
       console.error('Supabase fetchAuditLogs error:', e);
-      return [];
+      throw e;
     }
   }
 
@@ -1277,7 +1333,7 @@ export class SupabaseService {
       return !error;
     } catch (e) {
       console.error('Supabase saveAuditLog error:', e);
-      return false;
+      throw e;
     }
   }
 

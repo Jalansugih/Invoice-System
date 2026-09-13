@@ -1132,10 +1132,10 @@ export class StorageService {
     );
   }
 
-  private static syncCustomerDeleteToSupabase(id: string) {
-    SupabaseService.deleteCustomer(id).catch((e) =>
-      console.error('Gagal menghapus pelanggan di Supabase:', e)
-    );
+  private static syncCustomerDeleteToSupabase(id: string): Promise<void> {
+    const orgId = this.getSyncOrgId();
+    if (!orgId) return Promise.resolve();
+    return SupabaseService.deleteCustomer(id).then(() => undefined);
   }
 
   private static syncInvoiceToSupabase(invoice: Invoice): Promise<void> {
@@ -1146,10 +1146,8 @@ export class StorageService {
     );
   }
 
-  private static syncInvoiceDeleteToSupabase(id: string) {
-    SupabaseService.deleteInvoice(id).catch((e) =>
-      console.error('Gagal menghapus invoice di Supabase:', e)
-    );
+  private static syncInvoiceDeleteToSupabase(id: string): Promise<void> {
+    return SupabaseService.deleteInvoice(id).then(() => undefined);
   }
 
   private static syncPaymentToSupabase(payment: Payment): Promise<void> {
@@ -1160,10 +1158,8 @@ export class StorageService {
     );
   }
 
-  private static syncPaymentDeleteToSupabase(id: string) {
-    SupabaseService.deletePayment(id).catch((e) =>
-      console.error('Gagal menghapus pembayaran di Supabase:', e)
-    );
+  private static syncPaymentDeleteToSupabase(id: string): Promise<void> {
+    return SupabaseService.deletePayment(id).then(() => undefined);
   }
 
   private static syncProductToSupabase(product: Product): Promise<void> {
@@ -1174,10 +1170,8 @@ export class StorageService {
     );
   }
 
-  private static syncProductDeleteToSupabase(id: string) {
-    SupabaseService.deleteProduct(id).catch((e) =>
-      console.error('Gagal menghapus produk di Supabase:', e)
-    );
+  private static syncProductDeleteToSupabase(id: string): Promise<void> {
+    return SupabaseService.deleteProduct(id).then(() => undefined);
   }
 
   private static syncBillingLetterToSupabase(letter: BillingLetter): Promise<void> {
@@ -1640,6 +1634,10 @@ export class StorageService {
 
   public static async saveCustomer(customerData: Omit<Customer, 'id' | 'totalInvoiced' | 'totalPaid' | 'totalOutstanding' | 'createdAt'> & { id?: string }): Promise<Customer> {
     const customers = this.getCustomers();
+    const normalizedEmail = (customerData.email || '').trim().toLowerCase();
+    const normalizedNpwp = (customerData.npwp || '').replace(/\D/g, '');
+    const duplicate = customers.find((c) => c.id !== customerData.id && ((customerData.code || '').trim() && c.code.trim().toLowerCase() === customerData.code.trim().toLowerCase() || (normalizedEmail && c.email.trim().toLowerCase() === normalizedEmail) || (normalizedNpwp && (c.npwp || '').replace(/\D/g, '') === normalizedNpwp)));
+    if (duplicate) throw new Error(`Pelanggan duplikat: data cocok dengan \"${duplicate.name}\" berdasarkan kode, email, atau NPWP.`);
     const sequences = this.getSequences();
     let customer: Customer;
 
@@ -1692,7 +1690,7 @@ export class StorageService {
     return customer;
   }
 
-  public static deleteCustomer(id: string): boolean {
+  public static async deleteCustomer(id: string): Promise<boolean> {
     const customers = this.getCustomers();
     const target = customers.find((c) => c.id === id);
     if (!target) return false;
@@ -1700,7 +1698,7 @@ export class StorageService {
     const filtered = customers.filter((c) => c.id !== id);
     this.setItem(STORAGE_KEYS.CUSTOMERS, filtered);
     this.addAuditLog('delete', 'customers', id, target.name, `Menghapus pelanggan: ${target.name}`);
-    this.syncCustomerDeleteToSupabase(id);
+    await this.syncCustomerDeleteToSupabase(id);
     return true;
   }
 
@@ -1711,6 +1709,11 @@ export class StorageService {
 
   public static async saveProduct(productData: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
     const products = this.getProducts();
+    const normalizedCode = (productData.code || '').trim().toLowerCase();
+    if (normalizedCode) {
+      const duplicate = products.find((p) => p.id !== productData.id && p.code.trim().toLowerCase() === normalizedCode);
+      if (duplicate) throw new Error(`Kode produk \"${productData.code}\" sudah digunakan oleh \"${duplicate.name}\".`);
+    }
     const sequences = this.getSequences();
     let product: Product;
 
@@ -1761,14 +1764,14 @@ export class StorageService {
     return product;
   }
 
-  public static deleteProduct(id: string): boolean {
+  public static async deleteProduct(id: string): Promise<boolean> {
     const products = this.getProducts();
     const target = products.find((p) => p.id === id);
     if (!target) return false;
     const filtered = products.filter((p) => p.id !== id);
     this.setItem(STORAGE_KEYS.PRODUCTS, filtered);
     this.addAuditLog('delete', 'products', id, target.name, `Menghapus master produk: ${target.name}`);
-    this.syncProductDeleteToSupabase(id);
+    await this.syncProductDeleteToSupabase(id);
     return true;
   }
 
@@ -2141,7 +2144,7 @@ export class StorageService {
     return inv;
   }
 
-  public static deleteInvoice(id: string): boolean {
+  public static async deleteInvoice(id: string): Promise<boolean> {
     const invoices = this.getInvoices();
     const target = invoices.find((i) => i.id === id);
     if (!target) return false;
@@ -2156,7 +2159,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.INVOICES, filtered);
     this.addAuditLog('delete', 'invoices', id, target.invoiceNumber, `Menghapus invoice: ${target.invoiceNumber}`);
     this.recalculateCustomerBalances();
-    this.syncInvoiceDeleteToSupabase(id);
+    await this.syncInvoiceDeleteToSupabase(id);
     return true;
   }
 
@@ -2397,7 +2400,7 @@ export class StorageService {
     return payment;
   }
 
-  public static deletePayment(id: string): boolean {
+  public static async deletePayment(id: string): Promise<boolean> {
     const payments = this.getPayments();
     const target = payments.find((p) => p.id === id);
     if (!target) return false;
@@ -2421,7 +2424,7 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.PAYMENTS, filtered);
     this.addAuditLog('delete', 'payments', id, target.receiptNumber, `Membatalkan kuitansi pembayaran: ${target.receiptNumber}`);
     this.recalculateCustomerBalances();
-    this.syncPaymentDeleteToSupabase(id);
+    await this.syncPaymentDeleteToSupabase(id);
     return true;
   }
 

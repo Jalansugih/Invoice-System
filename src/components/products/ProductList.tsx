@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Product } from '../../types';
 import { StorageService } from '../../lib/storage';
+import { SupabaseService } from '../../lib/supabaseService';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { useAuth } from '../auth/Auth';
 import { formatRupiah, exportToCSV } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -11,7 +14,15 @@ import { ProductImportModal } from './ProductImportModal';
 import { Package, Search, Plus, Download, Upload, Edit2, Trash2, Tag, Boxes, ArrowDownUp, ArrowDownToLine } from 'lucide-react';
 
 export const ProductList: React.FC = () => {
-  const [products, setProducts] = useState(StorageService.getProducts());
+  const { user, canPerformAction } = useAuth();
+  const canEdit = canPerformAction('edit_all');
+  const canDelete = canPerformAction('delete_records');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const pageSize = 25;
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -30,9 +41,21 @@ export const ProductList: React.FC = () => {
   const [receiptNote, setReceiptNote] = useState('');
   const [receiptBusy, setReceiptBusy] = useState(false);
 
-  const refreshData = () => {
-    setProducts(StorageService.getProducts());
+  const loadPage = async (targetPage = page) => {
+    setLoading(true); setLoadError('');
+    try {
+      if (isSupabaseConfigured && user?.organizationId) {
+        const result = await SupabaseService.fetchProductsPage(user.organizationId, targetPage, pageSize, searchQuery);
+        setProducts(result.data); setTotalProducts(result.count); setPage(targetPage);
+      } else {
+        const local = StorageService.getProducts(); const q = searchQuery.trim().toLowerCase();
+        const filtered = local.filter(p => !q || [p.name,p.code,p.description,p.category].some(v => (v || '').toLowerCase().includes(q)));
+        setTotalProducts(filtered.length); setProducts(filtered.slice((targetPage-1)*pageSize, targetPage*pageSize)); setPage(targetPage);
+      }
+    } catch (e: any) { setLoadError(e?.message || 'Gagal memuat produk dari Supabase.'); } finally { setLoading(false); }
   };
+  useEffect(() => { const t = window.setTimeout(() => { void loadPage(1); }, 250); return () => window.clearTimeout(t); }, [user?.organizationId, searchQuery]);
+  const refreshData = () => { void loadPage(page); };
 
   const saveStockAdjustment = async () => {
     if (!stockTarget || !stockDelta) return;
@@ -87,10 +110,10 @@ export const ProductList: React.FC = () => {
     exportToCSV(`Katalog_Produk_${new Date().toISOString().split('T')[0]}`, data);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!productToDelete) return;
     try {
-      StorageService.deleteProduct(productToDelete.id);
+      await StorageService.deleteProduct(productToDelete.id);
       setProductToDelete(null);
       refreshData();
     } catch (err: any) {
@@ -125,6 +148,7 @@ export const ProductList: React.FC = () => {
             variant="outline"
             size="sm"
             onClick={() => setIsImportModalOpen(true)}
+            disabled={!canEdit}
             leftIcon={<Upload className="w-4 h-4" />}
           >
             Import Massal
@@ -136,6 +160,7 @@ export const ProductList: React.FC = () => {
               setIsModalOpen(true);
             }}
             leftIcon={<Plus className="w-4 h-4" />}
+            disabled={!canEdit}
           >
             Tambah Produk / Jasa
           </Button>
@@ -169,6 +194,8 @@ export const ProductList: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {loadError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 flex items-center justify-between gap-3"><span>{loadError}</span><Button size="sm" variant="outline" onClick={() => void loadPage(page)}>Coba Lagi</Button></div>}
 
       {/* Products Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
@@ -221,7 +248,7 @@ export const ProductList: React.FC = () => {
 
                     <td className="py-3 px-4 text-center">
                       {prd.trackInventory ? (
-                        <button onClick={() => { setStockTarget(prd); setStockDelta(0); setStockNote(''); }} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold ${(prd.stockQty ?? 0) <= (prd.minStock ?? 0) ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                        <button onClick={() => { setStockTarget(prd); setStockDelta(0); setStockNote(''); }} disabled={!canEdit} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold ${(prd.stockQty ?? 0) <= (prd.minStock ?? 0) ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
                           <Boxes className="w-3 h-3" /> {prd.stockQty ?? 0} {prd.unit}
                         </button>
                       ) : <span className="text-[10px] text-slate-400">Non-stok</span>}
@@ -240,7 +267,7 @@ export const ProductList: React.FC = () => {
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {prd.trackInventory && (
-                          <button onClick={() => { setReceiptTarget(prd); setReceiptQty(0); setReceiptCost(prd.costPrice ?? 0); setReceiptType('PURCHASE'); setReceiptNote(''); }} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors" title="Stok Masuk">
+                          <button onClick={() => { setReceiptTarget(prd); setReceiptQty(0); setReceiptCost(prd.costPrice ?? 0); setReceiptType('PURCHASE'); setReceiptNote(''); }} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors" title="Stok Masuk" disabled={!canEdit}>
                             <ArrowDownToLine className="w-4 h-4" />
                           </button>
                         )}
@@ -251,6 +278,7 @@ export const ProductList: React.FC = () => {
                           }}
                           className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
                           title="Edit Item"
+                          disabled={!canEdit}
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -258,6 +286,7 @@ export const ProductList: React.FC = () => {
                           onClick={() => setProductToDelete(prd)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                           title="Hapus Item"
+                          disabled={!canDelete}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

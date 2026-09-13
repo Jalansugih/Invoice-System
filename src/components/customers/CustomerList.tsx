@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Customer } from '../../types';
 import { StorageService } from '../../lib/storage';
+import { SupabaseService } from '../../lib/supabaseService';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { useAuth } from '../auth/Auth';
 import { formatRupiah, exportToCSV } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -32,9 +35,17 @@ export const CustomerList: React.FC<CustomerListProps> = ({
   onCreateInvoiceForCustomer,
   onViewInvoice,
 }) => {
-  const [customers, setCustomers] = useState(StorageService.getCustomers());
+  const { user, canPerformAction } = useAuth();
+  const canEdit = canPerformAction('edit_all');
+  const canDelete = canPerformAction('delete_records');
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState(StorageService.getInvoices());
   const [payments, setPayments] = useState(StorageService.getPayments());
+  const [totalCustomers, setTotalCustomers] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const pageSize = 25;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'has_outstanding'>('all');
@@ -48,31 +59,25 @@ export const CustomerList: React.FC<CustomerListProps> = ({
   // Delete confirm
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
 
-  const refreshData = () => {
-    setCustomers(StorageService.getCustomers());
-    setInvoices(StorageService.getInvoices());
-    setPayments(StorageService.getPayments());
+  const loadPage = async (targetPage = page) => {
+    setLoading(true); setLoadError('');
+    try {
+      if (isSupabaseConfigured && user?.organizationId) {
+        const result = await SupabaseService.fetchCustomersPage(user.organizationId, targetPage, pageSize, searchQuery, filterStatus);
+        setCustomers(result.data); setTotalCustomers(result.count); setPage(targetPage);
+      } else {
+        const local = StorageService.getCustomers();
+        const q = searchQuery.trim().toLowerCase();
+        const filtered = local.filter(c => (filterStatus === 'all' || (filterStatus === 'active' ? c.isActive : c.totalOutstanding > 0)) && (!q || [c.name,c.code,c.companyName,c.email,c.pic,c.city].some(v => (v || '').toLowerCase().includes(q))));
+        setTotalCustomers(filtered.length); setCustomers(filtered.slice((targetPage-1)*pageSize, targetPage*pageSize)); setPage(targetPage);
+      }
+      setInvoices(StorageService.getInvoices()); setPayments(StorageService.getPayments());
+    } catch (e: any) { setLoadError(e?.message || 'Gagal memuat pelanggan dari Supabase.'); } finally { setLoading(false); }
   };
-
-  const filteredCustomers = useMemo(() => {
-    const q = (searchQuery || '').trim().toLowerCase();
-    return customers.filter((c) => {
-      const matchQuery =
-        !q ||
-        (c.name || '').toLowerCase().includes(q) ||
-        (c.code || '').toLowerCase().includes(q) ||
-        (c.companyName || '').toLowerCase().includes(q) ||
-        (c.email || '').toLowerCase().includes(q) ||
-        (c.pic || '').toLowerCase().includes(q) ||
-        (c.city || '').toLowerCase().includes(q);
-
-      if (!matchQuery) return false;
-
-      if (filterStatus === 'active') return c.isActive;
-      if (filterStatus === 'has_outstanding') return c.totalOutstanding > 0;
-      return true;
-    });
-  }, [customers, searchQuery, filterStatus]);
+  useEffect(() => { const t = window.setTimeout(() => { void loadPage(1); }, 250); return () => window.clearTimeout(t); }, [user?.organizationId, searchQuery, filterStatus]);
+  const refreshData = () => { void loadPage(page); };
+  const filteredCustomers = useMemo(() => filterStatus === 'active' ? customers.filter(c => c.isActive) : filterStatus === 'has_outstanding' ? customers.filter(c => c.totalOutstanding > 0) : customers, [customers, filterStatus]);
+  const totalPages = Math.max(1, Math.ceil(totalCustomers / pageSize));
 
   const handleExportCSV = () => {
     const data = filteredCustomers.map((c) => ({
@@ -93,10 +98,10 @@ export const CustomerList: React.FC<CustomerListProps> = ({
     exportToCSV(`Pelanggan_BillingFlow_${new Date().toISOString().split('T')[0]}`, data);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!customerToDelete) return;
     try {
-      StorageService.deleteCustomer(customerToDelete.id);
+      await StorageService.deleteCustomer(customerToDelete.id);
       setCustomerToDelete(null);
       refreshData();
     } catch (err: any) {
@@ -133,6 +138,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
             variant="outline"
             size="sm"
             onClick={() => setIsImportModalOpen(true)}
+            disabled={!canEdit}
             leftIcon={<Upload className="w-4 h-4" />}
           >
             Import Massal
@@ -145,6 +151,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
             }}
             leftIcon={<Plus className="w-4 h-4" />}
             className="bg-blue-600 hover:bg-blue-700 text-white"
+            disabled={!canEdit}
           >
             New Customer
           </Button>
@@ -159,7 +166,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
               Total Client Accounts
             </p>
             <p className="text-lg sm:text-xl xl:text-2xl font-bold text-slate-900 mt-1 tabular-nums tracking-tight truncate">
-              {customers.length}
+              {totalCustomers}
             </p>
           </div>
           <p className="text-xs text-slate-500 mt-1.5 tabular-nums truncate">
@@ -214,7 +221,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All ({customers.length})
+            All ({totalCustomers})
           </button>
           <button
             onClick={() => setFilterStatus('active')}
@@ -238,6 +245,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({
           </button>
         </div>
       </div>
+
+      {loadError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 flex items-center justify-between gap-3"><span>{loadError}</span><Button size="sm" variant="outline" onClick={() => void loadPage(page)}>Coba Lagi</Button></div>}
 
       {/* Customers Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
@@ -331,6 +340,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
                           onClick={() => onCreateInvoiceForCustomer(c)}
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
                           title="Create Invoice for Client"
+                          disabled={!canEdit}
                         >
                           <FilePlus className="w-4 h-4" />
                         </button>
@@ -350,6 +360,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
                           }}
                           className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
                           title="Edit Customer"
+                          disabled={!canEdit}
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -358,6 +369,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
                           onClick={() => setCustomerToDelete(c)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                           title="Delete Customer"
+                          disabled={!canDelete}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -369,6 +381,11 @@ export const CustomerList: React.FC<CustomerListProps> = ({
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+        <span>Halaman {page} dari {totalPages} · {totalCustomers} pelanggan</span>
+        <div className="flex gap-2"><Button size="sm" variant="outline" disabled={loading || page <= 1} onClick={() => void loadPage(page - 1)}>Sebelumnya</Button><Button size="sm" variant="outline" disabled={loading || page >= totalPages} onClick={() => void loadPage(page + 1)}>Berikutnya</Button></div>
       </div>
 
       {/* Customer Form Modal */}

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StorageService, generateId } from '../../lib/storage';
+import { useAuth } from '../auth/Auth';
 import { Organization, BankAccount, OrganizationType } from '../../types';
 import { SUPABASE_SQL_MIGRATION } from '../../lib/supabaseMigration';
 import { SupabaseService, MigrationResult } from '../../lib/supabaseService';
@@ -43,6 +44,8 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'company' }) => {
+  const { canPerformAction } = useAuth();
+  const canManageSettings = canPerformAction('org_settings');
   const [activeTab, setActiveTab] = useState<'company' | 'bank' | 'formats' | 'database'>(initialTab);
 
   // SettingsView stays mounted while switching between the settings_* sub-menu
@@ -123,7 +126,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'compan
   const logoInputRef = useRef<HTMLInputElement>(null);
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSaveCompany = (e: React.FormEvent) => {
+  const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     const updatedOrg = {
       ...org,
@@ -131,11 +134,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'compan
       directorName: org.signatureName || org.directorName || '',
     };
     setOrg(updatedOrg);
-    StorageService.saveOrganization(updatedOrg);
-    SupabaseService.saveOrganization(updatedOrg).catch((err) => {
-      console.warn('Supabase organization save warning:', err);
-    });
-    setIsSaved(true);
+    try {
+      StorageService.saveOrganization(updatedOrg);
+      await SupabaseService.saveOrganization(updatedOrg);
+      setIsSaved(true);
+    } catch (err: any) {
+      setIsSaved(false);
+      alert(err?.message || 'Gagal menyimpan pengaturan organisasi ke Supabase.');
+    }
     setTimeout(() => setIsSaved(false), 3000);
   };
 
@@ -277,6 +283,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'compan
       window.location.reload();
     }
   };
+
+  if (!canManageSettings) return <div className="max-w-4xl mx-auto rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900"><div className="flex items-center gap-3 font-semibold"><Lock className="w-5 h-5"/> Pengaturan dibatasi</div><p className="mt-2">Role Anda tidak memiliki izin untuk mengubah pengaturan organisasi, rekening bank, format dokumen, atau konfigurasi database.</p></div>;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
