@@ -257,6 +257,11 @@ export default function App() {
                   setCurrentTab('billing_letters');
                   setViewingLetterId(letId);
                 }}
+                onViewReceipt={(payment) => {
+                  setViewingInvoiceId(null);
+                  setCurrentTab('payments');
+                  setViewingReceiptPayment(payment);
+                }}
                 onInvoiceDeleted={() => setViewingInvoiceId(null)}
               />
             )}

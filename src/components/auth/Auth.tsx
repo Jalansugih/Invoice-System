@@ -297,17 +297,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 console.warn('[AuthProvider] Background hydration note:', e)
               );
             } else {
-              // Check if demo user was active in local storage
-              const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
-              if (savedDemo) {
-                try {
-                  const parsed = JSON.parse(savedDemo);
-                  setUser(parsed);
-                  StorageService.setCurrentUser(parsed);
-                } catch {
-                  setUser(null);
-                }
-              }
+              // When Supabase is configured, absence of a Supabase session
+              // means there is no authenticated cloud user. Never revive a
+              // stale/demo local profile here, because that profile cannot
+              // satisfy Supabase RLS for financial writes.
+              localStorage.removeItem(DEMO_STORAGE_KEY);
+              setUser(null);
+              StorageService.clearCurrentUser();
             }
           }
 
@@ -342,18 +338,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
               } else {
                 setSupabaseUser(null);
-                const savedDemo = localStorage.getItem(DEMO_STORAGE_KEY);
-                if (savedDemo) {
-                  try {
-                    const parsed = JSON.parse(savedDemo);
-                    setUser(parsed);
-                    StorageService.setCurrentUser(parsed);
-                  } catch {
-                    setUser(null);
-                  }
-                } else {
-                  setUser(null);
-                }
+                // Demo mode is only allowed when Supabase is not configured.
+                localStorage.removeItem(DEMO_STORAGE_KEY);
+                setUser(null);
+                StorageService.clearCurrentUser();
               }
               setLoading(false);
             }

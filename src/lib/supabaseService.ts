@@ -103,13 +103,14 @@ export class SupabaseService {
   } | null> {
     if (!isSupabaseConfigured) return null;
     try {
-      // Demo/local-only mode has isSupabaseConfigured=true (env keys are
-      // set) but no real Supabase auth session (signInDemoUser never calls
-      // supabase.auth.*). Without this check, the RPC would run under no
-      // authenticated user and get_auth_org_id() would raise, which we'd
-      // otherwise mistake for a real validation error.
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData?.session) return null;
+      // A configured Supabase deployment must have a real Auth session.
+      // Returning null here used to trigger the localStorage fallback,
+      // which made failed database payments look locally successful.
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!sessionData?.session) {
+        throw new Error('Sesi login Supabase tidak ditemukan atau sudah kedaluwarsa. Silakan login ulang sebelum mencatat pembayaran.');
+      }
 
       const { data, error } = await supabase.rpc('record_payment_atomic', {
         p_invoice_id: payload.invoiceId,
@@ -130,11 +131,15 @@ export class SupabaseService {
       // them to the user, instead of silently swallowing and falling
       // back to a local write that would duplicate the payment.
       const msg: string = e?.message || '';
-      if (msg.includes('Nominal pembayaran') || msg.includes('Invoice tidak ditemukan') || msg.includes('organisasi')) {
+      if (msg.includes('Nominal pembayaran') || msg.includes('Invoice tidak ditemukan') || msg.includes('organisasi') || msg.includes('Sesi login Supabase')) {
         throw new Error(msg);
       }
       console.error('Supabase recordPaymentAtomic error:', e);
-      throw e;
+      if (e instanceof Error) throw e;
+      const parts = [e?.message, e?.details, e?.hint, e?.code ? `code=${e.code}` : null]
+        .filter(Boolean)
+        .map(String);
+      throw new Error(parts.length ? parts.join(' | ') : (() => { try { return JSON.stringify(e); } catch { return String(e); } })());
     }
   }
 

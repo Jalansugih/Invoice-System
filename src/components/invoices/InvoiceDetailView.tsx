@@ -36,6 +36,7 @@ export interface InvoiceDetailViewProps {
   onRecordPayment: (invoice: Invoice) => void;
   onCreateLetter: (invoice: Invoice) => void;
   onViewLetter: (letterId: string) => void;
+  onViewReceipt: (payment: Payment) => void;
   onInvoiceDeleted: () => void;
 }
 
@@ -46,6 +47,7 @@ export const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({
   onRecordPayment,
   onCreateLetter,
   onViewLetter,
+  onViewReceipt,
   onInvoiceDeleted,
 }) => {
   const [activeTab, setActiveTab] = useState<'preview' | 'costing' | 'payments' | 'letters' | 'audit'>('preview');
@@ -373,16 +375,35 @@ export const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({
                 ) : (
                   payments.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-mono font-semibold text-emerald-600">
-                        {p.receiptNumber}
+                      <td className="py-3 px-4">
+                        <button
+                          type="button"
+                          onClick={() => onViewReceipt(p)}
+                          className="inline-flex items-center gap-1.5 font-mono font-semibold text-emerald-600 hover:text-emerald-800 hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500/30 rounded"
+                          title="Buka dan cetak kuitansi penerimaan pembayaran"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          {p.receiptNumber}
+                        </button>
                       </td>
                       <td className="py-3 px-4 text-slate-700">{formatIndoDate(p.paymentDate)}</td>
                       <td className="py-3 px-4 capitalize font-medium text-slate-800">
                         {p.paymentMethod.replace('_', ' ')}
                       </td>
                       <td className="py-3 px-4 text-slate-500 font-mono">{p.referenceNumber || '-'}</td>
-                      <td className="py-3 px-4 text-right font-bold font-mono text-emerald-700 text-sm">
-                        {formatRupiah(p.amount)}
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <span className="font-bold font-mono text-emerald-700 text-sm">{formatRupiah(p.amount)}</span>
+                          <button
+                            type="button"
+                            onClick={() => onViewReceipt(p)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                            title="Cetak kuitansi"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            Cetak
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

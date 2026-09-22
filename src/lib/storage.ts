@@ -19,6 +19,7 @@ import {
 } from '../types';
 import { formatDocNumber, getDaysOverdue } from './utils';
 import { SupabaseService } from './supabaseService';
+import { isSupabaseConfigured } from './supabase';
 import { calcLineAmount, calcInvoiceTotals } from './invoiceCalc';
 
 /**
@@ -969,13 +970,28 @@ export class StorageService {
     return this.syncFailures.size > 0;
   }
 
+  private static formatError(error: unknown): string {
+    if (!error) return 'Unknown error';
+    if (error instanceof Error) return error.message || error.name;
+    if (typeof error === 'string') return error;
+    if (typeof error === 'object') {
+      const e = error as Record<string, unknown>;
+      const parts = [e.message, e.details, e.hint, e.code ? `code=${e.code}` : null]
+        .filter((v) => v !== undefined && v !== null && String(v).trim() !== '')
+        .map(String);
+      if (parts.length) return parts.join(' | ');
+      try { return JSON.stringify(error); } catch { return 'Unknown error object'; }
+    }
+    return String(error);
+  }
+
   private static markSyncFailure(table: string, id: string, label: string, error: unknown) {
     const key = `${table}:${id}`;
     this.syncFailures.set(key, {
       table,
       id,
       label,
-      error: error instanceof Error ? error.message : String(error),
+      error: this.formatError(error),
       failedAt: new Date().toISOString(),
     });
     this.notifySyncStatus();
@@ -1615,6 +1631,15 @@ export class StorageService {
     return this.saveUser(user);
   }
 
+  public static clearCurrentUser(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      this.notify();
+    } catch (e) {
+      console.error('Failed to clear current user:', e);
+    }
+  }
+
   public static updateUserRole(role: UserProfile['role']): UserProfile {
     const current = this.getUser();
     const updated = { ...current, role };
@@ -2197,24 +2222,34 @@ export class StorageService {
     // a real business-rule rejection from the server (e.g. amount now
     // exceeds outstanding after a concurrent payment) and should surface
     // to the user as-is, not be swallowed into a local fallback.
-    // recordPaymentAtomic() itself returns null (rather than throwing)
-    // when Supabase isn't configured, there's no live auth session (demo
-    // mode), or the RPC isn't deployed yet - all cases where we should
-    // fall back below instead.
+    // In configured Supabase mode, recordPaymentAtomic() must either commit
+    // the transaction or throw a useful database/auth error.
     // -----------------------------------------------------------------
-    const atomicResult = await SupabaseService.recordPaymentAtomic({
-      invoiceId: invoice.id,
-      amount: paymentData.amount,
-      paymentDate: paymentData.paymentDate,
-      paymentMethod: paymentData.paymentMethod,
-      destinationBank: paymentData.destinationBank,
-      bankAccountId: paymentData.bankAccountId,
-      accountNumber: paymentData.accountNumber,
-      referenceNumber: paymentData.referenceNumber,
-      notes: paymentData.notes,
-    });
+    // In production/Supabase mode, payment MUST be committed by the atomic
+    // database RPC. Never silently fall back to localStorage: that would make
+    // the UI say a payment succeeded while the database did not.
+    if (isSupabaseConfigured) {
+      const selectedBank = org.bankAccounts.find((b) => b.id === paymentData.bankAccountId);
+      const atomicResult = await SupabaseService.recordPaymentAtomic({
+        invoiceId: invoice.id,
+        amount: paymentData.amount,
+        paymentDate: paymentData.paymentDate,
+        paymentMethod: paymentData.paymentMethod,
+        destinationBank: paymentData.destinationBank || selectedBank?.bankName,
+        // The UI's legacy/local bank ids (e.g. bank-001) are not Postgres UUIDs.
+        // Only pass a bank_account_id to the RPC when it is a real UUID.
+        bankAccountId: paymentData.bankAccountId && isValidUUID(paymentData.bankAccountId)
+          ? paymentData.bankAccountId
+          : undefined,
+        accountNumber: paymentData.accountNumber || selectedBank?.accountNumber,
+        referenceNumber: paymentData.referenceNumber,
+        notes: paymentData.notes,
+      });
 
-    if (atomicResult) {
+      if (!atomicResult) {
+        throw new Error('Pembayaran tidak disimpan: Supabase tidak mengembalikan hasil transaksi. Periksa sesi login dan RPC record_payment_atomic.');
+      }
+
       const payment: Payment = {
         id: atomicResult.payment_id,
         paymentNumber: atomicResult.payment_number,
@@ -2227,7 +2262,7 @@ export class StorageService {
         paymentMethod: paymentData.paymentMethod,
         destinationBank: atomicResult.destination_bank,
         bankAccountId: paymentData.bankAccountId,
-        accountNumber: paymentData.accountNumber,
+        accountNumber: paymentData.accountNumber || selectedBank?.accountNumber,
         referenceNumber: paymentData.referenceNumber,
         notes: paymentData.notes,
         receivedBy: atomicResult.received_by,
@@ -2236,9 +2271,6 @@ export class StorageService {
         createdAt: new Date().toISOString(),
       };
 
-      // Everything below only updates the LOCAL CACHE to match what the
-      // server already committed - it does not re-push to Supabase
-      // (that would be redundant, the RPC already wrote it).
       const payments = this.getPayments();
       payments.unshift(payment);
       this.setItem(STORAGE_KEYS.PAYMENTS, payments);
@@ -2272,39 +2304,12 @@ export class StorageService {
       });
       this.setItem(STORAGE_KEYS.DOCUMENTS, documents);
 
-      const auditLogs = this.getAuditLogs();
-      auditLogs.unshift({
-        id: generateId(),
-        userId: user.id,
-        userName: user.name,
-        userRole: user.role,
-        action: 'pay',
-        module: 'payments',
-        recordId: payment.id,
-        recordTitle: payment.paymentNumber,
-        details: `Mencatat pembayaran Rp${payment.amount.toLocaleString('id-ID')} untuk ${invoice.invoiceNumber} (${invoice.customerName})`,
-        timestamp: new Date().toISOString(),
-      });
-      this.setItem(STORAGE_KEYS.AUDIT_LOGS, auditLogs);
-
-      this.addNotification({
-        title: 'Pembayaran Diterima',
-        message: `Pembayaran Rp${payment.amount.toLocaleString('id-ID')} untuk ${invoice.invoiceNumber} telah dicatat.`,
-        type: 'success',
-        linkModule: 'payments',
-        linkId: payment.id,
-      });
-
       this.recalculateCustomerBalances();
       return payment;
     }
 
     // -----------------------------------------------------------------
-    // FALLBACK PATH: Supabase not configured / no session (demo mode) /
-    // atomic RPC not deployed yet. Same behaviour as before this change -
-    // sequential local writes, each individually synced to Supabase in
-    // the background. Not atomic, but there's no server transaction to
-    // be atomic with in these cases anyway.
+    // LOCAL/OFFLINE FALLBACK: Supabase is not configured (development/demo mode).
     // -----------------------------------------------------------------
     const sequences = this.getSequences();
 
